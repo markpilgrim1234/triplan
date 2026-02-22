@@ -11,103 +11,77 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-  <!-- SheetJS (legge XLSX in browser) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
   <style>
     :root{
-      --bg:#ffffff;
-      --text:#111;
-      --muted:#666;
-      --line:#e9e9e9;
-      --card:#fff;
-      --pill:#f3f3f3;
-      --shadow: 0 8px 30px rgba(0,0,0,.06);
+      --text:#111; --muted:#666; --line:#e9e9e9; --shadow:0 8px 30px rgba(0,0,0,.06);
       --radius:16px;
     }
-    body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; background:var(--bg); color:var(--text);}
+    body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; color:var(--text); background:#fff; }
     .wrap{ max-width:1100px; margin:0 auto; padding:22px; }
-    h1{ margin:0 0 14px; font-size:26px; letter-spacing:-.02em; }
-    .topbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:14px;}
-    .controls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    input[type="text"], select, button{
-      padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff;
-      font-size:14px;
+    h1{ margin:0 0 8px; font-size:26px; letter-spacing:-.02em; }
+    .meta{ color:var(--muted); font-size:13px; }
+
+    .controls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; }
+    input[type="text"], select{
+      padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; font-size:14px;
     }
-    button{ cursor:pointer; }
-    button.primary{ background:#111; color:#fff; border-color:#111; }
+
+    .kpis{ display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 18px; }
+    .kpi{ border:1px solid var(--line); border-radius:14px; padding:10px 12px; box-shadow:var(--shadow); background:#fff; }
+    .kpi .v{ font-size:18px; font-weight:800; }
+    .kpi .l{ font-size:12px; color:var(--muted); margin-top:2px; }
+
     .tabs{ display:flex; gap:8px; margin:14px 0 12px; }
     .tab{ padding:10px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; cursor:pointer; font-size:14px; }
     .tab.active{ background:#111; color:#fff; border-color:#111; }
 
-    .kpis{ display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 18px; }
-    .kpi{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; box-shadow:var(--shadow); }
-    .kpi .v{ font-size:18px; font-weight:700; }
-    .kpi .l{ font-size:12px; color:var(--muted); margin-top:2px; }
-
     .grid{ display:grid; grid-template-columns: 1.15fr .85fr; gap:14px; }
-    @media (max-width: 920px){ .grid{ grid-template-columns: 1fr; } }
+    @media (max-width: 920px){ .grid{ grid-template-columns:1fr; } }
 
-    .panel{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
-    .panel .hd{ padding:14px 14px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px;}
+    .panel{ border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; background:#fff; }
+    .panel .hd{ padding:14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:10px; align-items:center; }
     .panel .hd h2{ margin:0; font-size:16px; }
     .panel .bd{ padding:14px; }
-    .meta{ color:var(--muted); font-size:13px; }
 
     .day{ border:1px solid var(--line); border-radius:16px; overflow:hidden; margin:12px 0; }
-    .dayTop{ padding:12px 14px; background:#fafafa; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .dayTop .d{ font-weight:700; }
+    .dayTop{ padding:12px 14px; background:#fafafa; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    .dayTop .d{ font-weight:800; }
     .dayTop .s{ color:var(--muted); font-size:13px; }
 
-    .lanes{ display:grid; grid-template-columns: 1fr 1fr; gap:0; }
-    @media (max-width: 920px){ .lanes{ grid-template-columns: 1fr; } }
+    .lanes{ display:grid; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 920px){ .lanes{ grid-template-columns:1fr; } }
     .lane{ padding:12px 14px; }
-    .laneTitle{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-    .laneTitle .pill{ font-size:12px; padding:4px 8px; border-radius:999px; background:var(--pill); border:1px solid var(--line); }
-    .laneTitle strong{ font-size:13px; }
     .lane.trip{ background:#f7fff2; }
     .lane.night{ background:#f6f6ff; border-left:1px solid var(--line); }
     @media (max-width: 920px){ .lane.night{ border-left:none; border-top:1px solid var(--line);} }
 
+    .laneTitle{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+    .pill{ font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid var(--line); background:#fff; }
     .card{ border:1px solid var(--line); background:#fff; border-radius:14px; padding:10px 12px; margin:10px 0; }
-    .tripCard .main{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .tripCard .route{ font-weight:800; letter-spacing:-.01em; }
-    .tripCard .km{ font-weight:700; }
+    .route{ font-weight:900; letter-spacing:-.01em; }
+    .place{ font-weight:900; }
     .sub{ margin-top:4px; color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:10px; }
     .flag{ font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid var(--line); background:#fff; }
-    .nightCard .place{ font-weight:800; }
-    .nightCard .hotel{ font-size:13px; color:var(--muted); margin-top:2px; }
-    .link{ text-decoration:none; border-bottom:1px dashed #bbb; }
+    .link{ color:inherit; text-decoration:none; border-bottom:1px dashed #bbb; }
     .warn{ border-color:#f0d7a7; background:#fffaf0; }
     .ok{ border-color:#d4edd4; background:#f6fff6; }
 
-    #map{ height:520px; width:100%; border-radius:16px; }
+    #map{ height:540px; width:100%; border-radius:16px; }
     .hidden{ display:none !important; }
 
     table{ width:100%; border-collapse:collapse; font-size:14px; }
     th, td{ border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
-    th{ font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+    th{ font-size:12px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
     .rowMini{ color:var(--muted); font-size:12px; margin-top:2px; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
-    <div class="topbar">
-      <div>
-        <h1>Pianificazione viaggio</h1>
-        <div class="meta" id="sourceMeta">Fonte: Google Drive XLSX</div>
-      </div>
+    <h1>Pianificazione viaggio</h1>
+    <div class="meta" id="sourceMeta">Fonte: viaggio2.csv (stessa cartella del sito)</div>
 
-      <div class="controls">
-        <button class="primary" id="btnLoadDrive">Carica da Google Drive</button>
-        <label style="display:inline-flex; gap:8px; align-items:center;">
-          <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
-          <button id="btnPickFile" type="button">Carica XLSX dal PC</button>
-        </label>
-      </div>
-    </div>
-
-    <div class="controls" style="margin-bottom:10px;">
+    <div class="controls">
       <input id="q" type="text" placeholder="Cerca (città, hotel, note...)" style="min-width:260px;"/>
       <select id="type">
         <option value="">Tutte</option>
@@ -156,12 +130,12 @@
       <div class="panel">
         <div class="hd">
           <h2>Mappa (OpenStreetMap)</h2>
-          <div class="meta" id="mapMeta">Mostra tappe con Lat/Long</div>
+          <div class="meta" id="mapMeta">—</div>
         </div>
         <div class="bd">
           <div id="map"></div>
           <div class="meta" style="margin-top:10px;">
-            Suggerimento: compila “Lat / Long” (es. <code>45.44, 12.33</code>) per vedere marker e tratte.
+            Compila “Lat / Long” nel CSV in formato <code>lat, long</code> (es. <code>41.3874, 2.1686</code>).
           </div>
         </div>
       </div>
@@ -173,22 +147,15 @@
           <h2>Prenotazioni (solo Notti)</h2>
           <div class="meta">hotel · link · stato · costo</div>
         </div>
-        <div class="bd">
-          <div id="bookings"></div>
-        </div>
+        <div class="bd" id="bookings"></div>
       </div>
     </div>
-
   </div>
 
 <script>
-  // =========================
-  // CONFIG: tuo file Drive
-  // =========================
-  const DRIVE_FILE_ID = "1-CdJBsSbpRtDrc-aw0t4ZEfoPD-rcxQL";
-  const DRIVE_DIRECT_URL = `https://drive.google.com/uc?export=download&id=${DRIVE_FILE_ID}`;
+  // ========= CONFIG =========
+  const CSV_PATH = "./viaggio2.csv"; // stesso folder di index.html
 
-  // intestazioni attese (come da tuo file)
   const COLS = [
     "Inc","N. days","Data","Attività","Partenza","Arrivo","Luogo","Km",
     "Pernottamento","Stato","Costo","Note","Lat / Long","Link"
@@ -197,9 +164,38 @@
   let rows = [];
   let map, mapLayerGroup, mapReady = false;
 
-  // =========================
-  // Helpers
-  // =========================
+  // ========= CSV parser (robusto per virgolette) =========
+  function parseCSV(text){
+    const rows = [];
+    let row = [], cell = "", inQuotes = false;
+
+    for(let i=0;i<text.length;i++){
+      const c = text[i];
+      const n = text[i+1];
+
+      if(c === '"'){
+        if(inQuotes && n === '"'){ cell += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if(!inQuotes && (c === ',' || c === '\n' || c === '\r')){
+        if(c === ','){ row.push(cell); cell = ""; }
+        else{
+          row.push(cell);
+          // ignora righe vuote
+          if(row.some(x => String(x).trim() !== "")) rows.push(row);
+          row = []; cell = "";
+          if(c === '\r' && n === '\n') i++;
+        }
+      } else {
+        cell += c;
+      }
+    }
+    if(cell.length || row.length){
+      row.push(cell);
+      if(row.some(x => String(x).trim() !== "")) rows.push(row);
+    }
+    return rows;
+  }
+
   const norm = (s) => String(s ?? "").trim();
   const low = (s) => norm(s).toLowerCase();
 
@@ -207,18 +203,18 @@
     const v = norm(ddmmyyyy);
     const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if(!m) return "";
-    const dd = m[1].padStart(2,"0");
-    const mm = m[2].padStart(2,"0");
-    const yy = m[3];
-    return `${yy}-${mm}-${dd}`;
+    return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
   }
   function fmtIT(iso){
     const d = new Date(iso+"T00:00:00");
     return d.toLocaleDateString("it-IT",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
   }
-
+  function safeNum(v){
+    const s = norm(v).replace(/[^\d,.\-]/g,"").replace(",",".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
   function parseLatLng(s){
-    // accetta "lat, long" o "lat long" o "lat;long"
     const v = norm(s);
     if(!v) return null;
     const parts = v.split(/[,\s;]+/).filter(Boolean);
@@ -229,76 +225,46 @@
     return null;
   }
 
-  function safeNum(v){
-    // accetta "123", "123,45", "€123" ecc.
-    const s = norm(v).replace(/[^\d,.\-]/g,"").replace(",",".");
-    const n = Number(s);
-    return Number.isFinite(n) ? n : 0;
-  }
+  // ========= LOAD =========
+  async function load(){
+    const res = await fetch(CSV_PATH, {cache:"no-store"});
+    if(!res.ok){
+      throw new Error(`Impossibile caricare ${CSV_PATH}. Controlla che sia nella stessa cartella e che GitHub Pages lo serva.`);
+    }
+    const text = await res.text();
+    const matrix = parseCSV(text);
 
-  function activityClass(a){
-    const A = norm(a);
-    if(A === "Trip") return "trip";
-    if(A === "Notte") return "night";
-    return "";
-  }
+    const header = matrix[0].map(h => norm(h));
+    // mappa posizione colonne
+    const idx = new Map();
+    header.forEach((h,i)=>idx.set(h,i));
 
-  // =========================
-  // XLSX loading
-  // =========================
-  async function loadXlsxFromUrl(url){
-    const res = await fetch(url);
-    if(!res.ok) throw new Error("Download fallito (Drive/CORS o link non accessibile).");
-    const buf = await res.arrayBuffer();
-    return parseXlsx(buf);
-  }
+    // se il CSV usa ';' come separatore, qui non lo rileviamo: in quel caso esporta con virgole.
+    // (se ti serve, posso aggiungere autodetect.)
 
-  async function loadXlsxFromFile(file){
-    const buf = await file.arrayBuffer();
-    return parseXlsx(buf);
-  }
+    rows = matrix.slice(1).map(r=>{
+      const obj = {};
+      // riempi solo le colonne attese (se mancanti, vuoto)
+      for(const c of COLS){
+        const i = idx.get(c);
+        obj[c] = i === undefined ? "" : norm(r[i]);
+      }
+      obj._dateISO = toISO(obj["Data"]);
+      obj._act = obj["Attività"];
+      obj._city = obj["Luogo"] || obj["Arrivo"] || obj["Partenza"] || "";
+      obj._km = safeNum(obj["Km"]);
+      obj._cost = safeNum(obj["Costo"]);
+      obj._latlng = parseLatLng(obj["Lat / Long"]);
+      return obj;
+    }).filter(r=>r._dateISO);
 
-  function parseXlsx(arrayBuffer){
-    const wb = XLSX.read(arrayBuffer, {type:"array"});
-    const sheetName = wb.SheetNames[0];
-    const ws = wb.Sheets[sheetName];
-    const json = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false});
+    rows.sort((a,b)=> a._dateISO.localeCompare(b._dateISO) || (norm(a._act)==="Trip" ? -1 : 1));
 
-    // Normalizza chiavi e crea righe coerenti
-    const out = json
-      .map(obj => {
-        const r = {};
-        // copia tutte le proprietà con trim
-        for(const k of Object.keys(obj)){
-          r[norm(k)] = norm(obj[k]);
-        }
-        // assicurati che esistano tutte le colonne standard
-        for(const c of COLS){
-          if(!(c in r)) r[c] = "";
-        }
-
-        // campi derivati
-        r._dateISO = toISO(r["Data"]);
-        r._act = r["Attività"];
-        r._city = r["Luogo"] || r["Arrivo"] || r["Partenza"] || "";
-        r._km = safeNum(r["Km"]);
-        r._cost = safeNum(r["Costo"]);
-        r._latlng = parseLatLng(r["Lat / Long"]);
-        return r;
-      })
-      .filter(r => r._dateISO); // ignora righe senza data valida
-
-    // Ordine: data, poi Trip prima di Notte (così prima lo spostamento e poi il pernotto)
-    out.sort((a,b) => a._dateISO.localeCompare(b._dateISO) || (norm(a._act)==="Trip" ? -1 : 1));
-
-    rows = out;
     rebuildFilters();
     renderAll();
   }
 
-  // =========================
-  // Filters + view state
-  // =========================
+  // ========= FILTERS =========
   function getFilters(){
     return {
       q: low(document.getElementById("q").value),
@@ -307,10 +273,9 @@
       status: norm(document.getElementById("status").value),
     };
   }
-
   function applyFilters(data){
     const f = getFilters();
-    return data.filter(r => {
+    return data.filter(r=>{
       if(f.type && norm(r["Attività"]) !== f.type) return false;
       if(f.city && norm(r._city) !== f.city) return false;
       if(f.status && norm(r["Stato"]) !== f.status) return false;
@@ -321,47 +286,36 @@
       return true;
     });
   }
-
   function rebuildFilters(){
     const citySet = new Set();
     const statusSet = new Set();
-
-    rows.forEach(r => {
-      const c = norm(r._city);
-      if(c) citySet.add(c);
-      const st = norm(r["Stato"]);
-      if(st) statusSet.add(st);
+    rows.forEach(r=>{
+      const c = norm(r._city); if(c) citySet.add(c);
+      const st = norm(r["Stato"]); if(st) statusSet.add(st);
     });
 
     const citySel = document.getElementById("city");
     citySel.length = 1;
     [...citySet].sort((a,b)=>a.localeCompare(b,"it")).forEach(c=>{
-      const o = document.createElement("option");
-      o.value = c; o.textContent = c;
-      citySel.appendChild(o);
+      const o=document.createElement("option"); o.value=c; o.textContent=c; citySel.appendChild(o);
     });
 
     const statusSel = document.getElementById("status");
     statusSel.length = 1;
     [...statusSet].sort((a,b)=>a.localeCompare(b,"it")).forEach(s=>{
-      const o = document.createElement("option");
-      o.value = s; o.textContent = s;
-      statusSel.appendChild(o);
+      const o=document.createElement("option"); o.value=s; o.textContent=s; statusSel.appendChild(o);
     });
   }
 
-  // =========================
-  // Render KPI + Timeline + Summary + Bookings + Map
-  // =========================
+  // ========= RENDER =========
   function renderAll(){
     const filtered = applyFilters(rows);
 
-    // KPI
-    const days = new Set(filtered.map(r => r._dateISO)).size;
-    const trips = filtered.filter(r => norm(r["Attività"])==="Trip").length;
-    const nights = filtered.filter(r => norm(r["Attività"])==="Notte").length;
-    const km = filtered.reduce((s,r)=> s + (r._km||0), 0);
-    const cost = filtered.reduce((s,r)=> s + (r._cost||0), 0);
+    const days = new Set(filtered.map(r=>r._dateISO)).size;
+    const trips = filtered.filter(r=>norm(r["Attività"])==="Trip").length;
+    const nights = filtered.filter(r=>norm(r["Attività"])==="Notte").length;
+    const km = filtered.reduce((s,r)=>s+(r._km||0),0);
+    const cost = filtered.reduce((s,r)=>s+(r._cost||0),0);
 
     document.getElementById("kDays").textContent = days || "—";
     document.getElementById("kTrips").textContent = trips || "—";
@@ -381,7 +335,6 @@
     const out = document.getElementById("timeline");
     out.innerHTML = "";
 
-    // group by day
     const by = new Map();
     for(const r of data){
       if(!by.has(r._dateISO)) by.set(r._dateISO, []);
@@ -391,20 +344,18 @@
 
     for(const d of days){
       const items = by.get(d);
-      const tripItems = items.filter(r => norm(r["Attività"])==="Trip");
-      const nightItems = items.filter(r => norm(r["Attività"])==="Notte");
+      const tripItems = items.filter(r=>norm(r["Attività"])==="Trip");
+      const nightItems = items.filter(r=>norm(r["Attività"])==="Notte");
 
-      const dayBox = document.createElement("div");
-      dayBox.className = "day";
-
-      // day summary line
       const dayKm = tripItems.reduce((s,r)=>s+(r._km||0),0);
       const dayCost = items.reduce((s,r)=>s+(r._cost||0),0);
 
+      const dayBox = document.createElement("div");
+      dayBox.className = "day";
       dayBox.innerHTML = `
         <div class="dayTop">
           <div class="d">${fmtIT(d)}</div>
-          <div class="s">${dayKm ? (dayKm.toLocaleString("it-IT")+" km") : ""}${dayKm && dayCost ? " · " : ""}${dayCost ? (dayCost.toLocaleString("it-IT")) : ""}</div>
+          <div class="s">${dayKm ? (dayKm.toLocaleString("it-IT")+" km") : ""}${dayKm && dayCost ? " · " : ""}${dayCost ? dayCost.toLocaleString("it-IT") : ""}</div>
         </div>
         <div class="lanes">
           <div class="lane trip">
@@ -421,36 +372,28 @@
       const tripLane = dayBox.querySelector('[data-lane="trip"]');
       const nightLane = dayBox.querySelector('[data-lane="night"]');
 
-      // Trip cards
-      if(tripItems.length === 0){
+      if(!tripItems.length){
         tripLane.innerHTML = `<div class="meta">Nessuno spostamento</div>`;
       } else {
         for(const r of tripItems){
           const km = r._km;
-          const warn = km >= 700 ? "warn" : (km >= 500 ? "warn" : "");
+          const warn = (km >= 500) ? "warn" : "";
           const st = norm(r["Stato"]);
           const cost = r._cost ? r._cost.toLocaleString("it-IT") : "";
           const notes = norm(r["Note"]);
           const link = norm(r["Link"]);
-
-          const card = document.createElement("div");
-          card.className = `card tripCard ${warn}`;
-
-          const route = `${norm(r["Partenza"]) || "—"} → ${norm(r["Arrivo"]) || "—"}`;
-          const flags = [
-            st ? `<span class="flag">${st}</span>` : "",
-            cost ? `<span class="flag">${cost}</span>` : "",
-            km ? `<span class="flag">${km.toLocaleString("it-IT")} km</span>` : ""
-          ].filter(Boolean).join("");
-
           const linkHtml = (link && link !== "?") ? ` · <a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
 
+          const route = `${norm(r["Partenza"]) || "—"} → ${norm(r["Arrivo"]) || "—"}`;
+
+          const card = document.createElement("div");
+          card.className = `card ${warn}`;
           card.innerHTML = `
-            <div class="main">
-              <div class="route">${route}</div>
-              <div>${flags}</div>
-            </div>
+            <div class="route">🚗 ${route}</div>
             <div class="sub">
+              ${km ? `<span class="flag">${km.toLocaleString("it-IT")} km</span>` : ""}
+              ${st ? `<span class="flag">${st}</span>` : ""}
+              ${cost ? `<span class="flag">${cost}</span>` : ""}
               ${notes ? `<span>📝 ${notes}</span>` : ""}
               ${linkHtml ? `<span>${linkHtml}</span>` : ""}
             </div>
@@ -459,8 +402,7 @@
         }
       }
 
-      // Night cards
-      if(nightItems.length === 0){
+      if(!nightItems.length){
         nightLane.innerHTML = `<div class="meta">Nessun pernotto</div>`;
       } else {
         for(const r of nightItems){
@@ -471,15 +413,14 @@
           const notes = norm(r["Note"]);
           const link = norm(r["Link"]);
           const ok = st && ["prenotato","pagato","confermato"].includes(low(st)) ? "ok" : "";
-
           const linkHtml = (link && link !== "?") ? `<a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
 
           const card = document.createElement("div");
-          card.className = `card nightCard ${ok}`;
+          card.className = `card ${ok}`;
           card.innerHTML = `
-            <div class="place">📍 ${place}</div>
-            <div class="hotel">🏨 ${hotel || "—"}</div>
+            <div class="place">🛏️ ${place}</div>
             <div class="sub">
+              ${hotel ? `<span>🏨 ${hotel}</span>` : `<span class="meta">Hotel: —</span>`}
               ${st ? `<span class="flag">${st}</span>` : ""}
               ${cost ? `<span class="flag">${cost}</span>` : ""}
               ${linkHtml ? `<span>🔗 ${linkHtml}</span>` : ""}
@@ -493,15 +434,15 @@
       out.appendChild(dayBox);
     }
 
-    if(days.length === 0){
+    if(!days.length){
       out.innerHTML = `<div class="meta">Nessun dato da mostrare con questi filtri.</div>`;
     }
   }
 
   function renderCitySummary(data){
     const out = document.getElementById("citySummary");
-    // summary by city
     const m = new Map();
+
     for(const r of data){
       const c = norm(r._city);
       if(!c) continue;
@@ -520,40 +461,35 @@
     }
 
     const items = [...m.entries()].sort((a,b)=> (b[1].nights - a[1].nights) || a[0].localeCompare(b[0],"it"));
-    if(items.length === 0){
-      out.innerHTML = `<div class="meta">Nessuna città (controlla “Luogo/Arrivo/Partenza”).</div>`;
+    if(!items.length){
+      out.innerHTML = `<div class="meta">Nessuna città (controlla Luogo/Arrivo/Partenza).</div>`;
       return;
     }
 
-    out.innerHTML = items.map(([city, s]) => {
-      const km = s.km ? `${s.km.toLocaleString("it-IT")} km` : "—";
-      const cost = s.cost ? `${s.cost.toLocaleString("it-IT")}` : "—";
-      return `
-        <div class="card">
-          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
-            <div style="font-weight:800;">${city}</div>
-            <div class="meta">${s.nights} notti</div>
-          </div>
-          <div class="sub">
-            <span class="flag">Trip out: ${s.tripsOut}</span>
-            <span class="flag">Trip in: ${s.tripsIn}</span>
-            <span class="flag">${km}</span>
-            <span class="flag">${cost}</span>
-          </div>
+    out.innerHTML = items.map(([city, s]) => `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">
+          <div style="font-weight:900;">${city}</div>
+          <div class="meta">${s.nights} notti</div>
         </div>
-      `;
-    }).join("");
+        <div class="sub">
+          <span class="flag">Trip out: ${s.tripsOut}</span>
+          <span class="flag">Trip in: ${s.tripsIn}</span>
+          <span class="flag">${s.km ? s.km.toLocaleString("it-IT")+" km" : "—"}</span>
+          <span class="flag">${s.cost ? s.cost.toLocaleString("it-IT") : "—"}</span>
+        </div>
+      </div>
+    `).join("");
   }
 
   function renderBookings(data){
     const out = document.getElementById("bookings");
-    const nights = data.filter(r => norm(r["Attività"])==="Notte");
+    const nights = data.filter(r=>norm(r["Attività"])==="Notte");
     if(!nights.length){
       out.innerHTML = `<div class="meta">Nessuna notte con questi filtri.</div>`;
       return;
     }
 
-    // group by city
     const byCity = new Map();
     nights.forEach(r=>{
       const c = norm(r._city) || "—";
@@ -588,28 +524,25 @@
     out.innerHTML = html;
   }
 
+  // ========= MAP =========
   function initMap(){
     if(mapReady) return;
     mapReady = true;
-
     map = L.map('map', { scrollWheelZoom:true }).setView([41.9, 12.5], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+      maxZoom:19,
+      attribution:'&copy; OpenStreetMap'
     }).addTo(map);
-
     mapLayerGroup = L.layerGroup().addTo(map);
   }
 
   function renderMap(data){
-    // render solo se tab map è visibile o map è già inizializzata
-    const mapViewVisible = !document.getElementById("view-map").classList.contains("hidden");
-    if(!mapViewVisible && !mapReady) return;
+    const mapVisible = !document.getElementById("view-map").classList.contains("hidden");
+    if(!mapVisible && !mapReady) return;
 
     initMap();
     mapLayerGroup.clearLayers();
 
-    // markers per città con lat/long (prende la prima occorrenza)
     const cityToLatLng = new Map();
     for(const r of data){
       const c = norm(r._city);
@@ -620,13 +553,12 @@
     const markers = [];
     for(const [city, ll] of cityToLatLng.entries()){
       const mk = L.marker([ll.lat, ll.lng])
-        .bindPopup(`<strong>${city}</strong><br/>Lat/Lng: ${ll.lat}, ${ll.lng}`);
+        .bindPopup(`<strong>${city}</strong><br/>${ll.lat}, ${ll.lng}`);
       mk.addTo(mapLayerGroup);
       markers.push(mk);
     }
 
-    // polyline tratte Trip (se entrambe le città hanno coords)
-    const tripRows = data.filter(r => norm(r["Attività"])==="Trip");
+    const tripRows = data.filter(r=>norm(r["Attività"])==="Trip");
     const lines = [];
     for(const r of tripRows){
       const from = norm(r["Partenza"]);
@@ -641,79 +573,39 @@
       }
     }
 
-    // fit bounds
     const allLayers = [...markers, ...lines];
     if(allLayers.length){
       const group = L.featureGroup(allLayers);
       map.fitBounds(group.getBounds().pad(0.15));
-      document.getElementById("mapMeta").textContent = `${markers.length} tappe · ${lines.length} tratte con coordinate`;
+      document.getElementById("mapMeta").textContent = `${markers.length} tappe · ${lines.length} tratte (con coordinate)`;
     } else {
-      document.getElementById("mapMeta").textContent = "Nessuna coordinata trovata: compila “Lat / Long”";
+      document.getElementById("mapMeta").textContent = "Nessuna coordinata trovata. Compila la colonna “Lat / Long”.";
       map.setView([41.9, 12.5], 5);
     }
   }
 
-  // =========================
-  // Tabs
-  // =========================
+  // ========= TABS =========
   function setTab(name){
-    document.querySelectorAll(".tab").forEach(t=>{
-      t.classList.toggle("active", t.dataset.tab === name);
-    });
+    document.querySelectorAll(".tab").forEach(t=> t.classList.toggle("active", t.dataset.tab===name));
     document.getElementById("view-timeline").classList.toggle("hidden", name!=="timeline");
     document.getElementById("view-map").classList.toggle("hidden", name!=="map");
     document.getElementById("view-bookings").classList.toggle("hidden", name!=="bookings");
-    if(name==="map") renderMap(applyFilters(rows)); // forza render mappa quando entri
+    if(name==="map") renderMap(applyFilters(rows));
   }
+  document.querySelectorAll(".tab").forEach(t=> t.addEventListener("click", ()=>setTab(t.dataset.tab)));
 
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.addEventListener("click", ()=> setTab(t.dataset.tab));
-  });
-
-  // =========================
-  // UI events
-  // =========================
+  // filters events
   ["q","type","city","status"].forEach(id=>{
     const el = document.getElementById(id);
     el.addEventListener("input", renderAll);
     el.addEventListener("change", renderAll);
   });
 
-  // load buttons
-  document.getElementById("btnLoadDrive").addEventListener("click", async ()=>{
-    document.getElementById("sourceMeta").textContent = "Fonte: Google Drive XLSX (download diretto)";
-    try{
-      await loadXlsxFromUrl(DRIVE_DIRECT_URL);
-    } catch(err){
-      alert(
-        "Non riesco a scaricare l'XLSX da Drive (spesso è CORS).\n\n" +
-        "Soluzione rapida: usa 'Carica XLSX dal PC' e seleziona lo stesso file.\n\n" +
-        "Dettaglio: " + err.message
-      );
-    }
+  // start
+  load().catch(err=>{
+    document.getElementById("sourceMeta").textContent = "Errore: " + err.message;
+    console.error(err);
   });
-
-  document.getElementById("btnPickFile").addEventListener("click", ()=>{
-    document.getElementById("fileInput").click();
-  });
-
-  document.getElementById("fileInput").addEventListener("change", async (e)=>{
-    const file = e.target.files?.[0];
-    if(!file) return;
-    document.getElementById("sourceMeta").textContent = `Fonte: file locale (${file.name})`;
-    await loadXlsxFromFile(file);
-  });
-
-  // auto-load all'avvio (prova Drive)
-  (async function boot(){
-    try{
-      await loadXlsxFromUrl(DRIVE_DIRECT_URL);
-    } catch{
-      // silenzioso: l'utente può cliccare o caricare file locale
-      document.getElementById("sourceMeta").textContent =
-        "Fonte: Google Drive XLSX (se non carica, usa 'Carica XLSX dal PC')";
-    }
-  })();
 </script>
 </body>
 </html>
