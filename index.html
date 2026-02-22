@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pianificazione Viaggio</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    header { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    input, select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; }
+    .meta { color:#555; font-size:14px; margin: 8px 0 18px; }
+    .day { border:1px solid #eee; border-radius:14px; padding:14px; margin:12px 0; }
+    .day h2 { margin:0 0 10px; font-size:18px; }
+    .item { display:grid; grid-template-columns: 90px 1fr; gap:10px; padding:10px; border-radius:12px; }
+    .item + .item { border-top:1px dashed #eee; margin-top:8px; padding-top:14px; }
+    .badge { display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #ddd; }
+    .trip { background:#f6ffed; }
+    .notte { background:#f5f5ff; }
+    .row { color:#222; }
+    .muted { color:#666; font-size:13px; }
+    a { color: inherit; }
+    .kpi { display:flex; gap:14px; flex-wrap:wrap; }
+    .kpi div { padding:10px 12px; border:1px solid #eee; border-radius:12px; }
+  </style>
+</head>
+<body>
+  <h1>Pianificazione viaggio</h1>
+
+  <header>
+    <input id="q" placeholder="Cerca (città, hotel, note...)" />
+    <select id="type">
+      <option value="">Tutte le attività</option>
+      <option value="Trip">Solo Trip</option>
+      <option value="Notte">Solo Notte</option>
+    </select>
+    <select id="city">
+      <option value="">Tutte le città</option>
+    </select>
+  </header>
+
+  <div class="kpi">
+    <div><strong id="kDays">-</strong><div class="muted">giorni nel piano</div></div>
+    <div><strong id="kTrips">-</strong><div class="muted">tratte (Trip)</div></div>
+    <div><strong id="kKm">-</strong><div class="muted">km totali (stimati)</div></div>
+  </div>
+
+  <p class="meta" id="meta"></p>
+  <div id="out"></div>
+
+<script>
+  // --- util ---
+  const parseCSV = (text) => {
+    // parser CSV semplice (gestisce virgolette basilari)
+    const rows = [];
+    let row = [], cell = "", inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], n = text[i+1];
+      if (c === '"' ) {
+        if (inQuotes && n === '"') { cell += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (!inQuotes && (c === ',' || c === '\n' || c === '\r')) {
+        if (c === ',' ) { row.push(cell); cell = ""; }
+        else {
+          if (cell.length || row.length) { row.push(cell); rows.push(row); }
+          row = []; cell = "";
+          if (c === '\r' && n === '\n') i++;
+        }
+      } else {
+        cell += c;
+      }
+    }
+    if (cell.length || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  };
+
+  const toISODate = (ddmmyyyy) => {
+    // atteso: 23/03/2026
+    const [dd, mm, yyyy] = ddmmyyyy.trim().split("/");
+    if (!dd || !mm || !yyyy) return "";
+    return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
+  };
+
+  const fmtIT = (iso) => {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("it-IT", { weekday:"short", day:"2-digit", month:"2-digit", year:"numeric" });
+  };
+
+  // --- stato ---
+  let data = [];
+
+  // --- rendering ---
+  const render = () => {
+    const q = document.getElementById("q").value.trim().toLowerCase();
+    const type = document.getElementById("type").value;
+    const city = document.getElementById("city").value;
+
+    const filtered = data.filter(r => {
+      if (type && r["Attività"] !== type) return false;
+      if (city) {
+        const c = (r["Luogo"] || r["Arrivo"] || r["Partenza"] || "").toLowerCase();
+        if (c !== city.toLowerCase()) return false;
+      }
+      if (q) {
+        const blob = Object.values(r).join(" ").toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+
+    // KPI
+    const daysSet = new Set(filtered.map(r => r._dateISO));
+    const trips = filtered.filter(r => r["Attività"] === "Trip").length;
+    const km = filtered.reduce((sum, r) => sum + (Number(r["Km"]) || 0), 0);
+
+    document.getElementById("kDays").textContent = daysSet.size;
+    document.getElementById("kTrips").textContent = trips;
+    document.getElementById("kKm").textContent = km ? km.toLocaleString("it-IT") : "—";
+
+    // raggruppa per giorno
+    const byDay = new Map();
+    for (const r of filtered) {
+      if (!byDay.has(r._dateISO)) byDay.set(r._dateISO, []);
+      byDay.get(r._dateISO).push(r);
+    }
+    const days = [...byDay.keys()].sort();
+
+    const out = document.getElementById("out");
+    out.innerHTML = "";
+
+    for (const d of days) {
+      const box = document.createElement("div");
+      box.className = "day";
+      const items = byDay.get(d);
+
+      box.innerHTML = `<h2>${fmtIT(d)}</h2>`;
+      for (const r of items) {
+        const isTrip = r["Attività"] === "Trip";
+        const badgeClass = isTrip ? "badge trip" : "badge notte";
+        const title = isTrip
+          ? `${r["Partenza"] || "—"} → ${r["Arrivo"] || "—"}`
+          : `${r["Luogo"] || r["Arrivo"] || r["Partenza"] || "—"}`;
+
+        const sub = isTrip
+          ? `${r["Km"] ? (r["Km"] + " km") : ""}`
+          : `${r["Pernottamento"] || ""}`;
+
+        const link = (r["Link"] && r["Link"] !== "?") ? r["Link"] : "";
+        const linkHTML = link ? ` · <a href="${link}" target="_blank" rel="noopener">link</a>` : "";
+
+        const el = document.createElement("div");
+        el.className = "item";
+        el.innerHTML = `
+          <div><span class="${badgeClass}">${r["Attività"]}</span></div>
+          <div class="row">
+            <div><strong>${title}</strong></div>
+            <div class="muted">${sub}${linkHTML}</div>
+          </div>
+        `;
+        box.appendChild(el);
+      }
+      out.appendChild(box);
+    }
+
+    document.getElementById("meta").textContent =
+      filtered.length ? `${filtered.length} righe mostrate` : "Nessun risultato con questi filtri.";
+  };
+
+  const fillCityFilter = () => {
+    const cities = new Set();
+    data.forEach(r => {
+      const c = (r["Luogo"] || r["Arrivo"] || r["Partenza"] || "").trim();
+      if (c) cities.add(c);
+    });
+    const sel = document.getElementById("city");
+    // reset mantenendo la prima opzione
+    sel.length = 1;
+    [...cities].sort((a,b)=>a.localeCompare(b)).forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      sel.appendChild(opt);
+    });
+  };
+
+  // --- load ---
+  (async function init() {
+    const res = await fetch("./viaggio.csv");
+    const text = await res.text();
+    const rows = parseCSV(text);
+
+    const header = rows[0].map(h => h.trim());
+    data = rows.slice(1)
+      .filter(r => r.some(x => String(x).trim() !== ""))
+      .map(r => {
+        const obj = {};
+        header.forEach((h, i) => obj[h] = (r[i] ?? "").trim());
+        obj._dateISO = toISODate(obj["Data"] || "");
+        return obj;
+      })
+      .filter(r => r._dateISO);
+
+    // ordina per data e poi Trip prima di Notte (di solito ha senso)
+    data.sort((a,b) => (a._dateISO.localeCompare(b._dateISO)) || (a["Attività"].localeCompare(b["Attività"])));
+
+    fillCityFilter();
+    render();
+
+    ["q","type","city"].forEach(id => document.getElementById(id).addEventListener("input", render));
+    document.getElementById("type").addEventListener("change", render);
+    document.getElementById("city").addEventListener("change", render);
+  })();
+</script>
+</body>
+</html>
