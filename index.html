@@ -4,209 +4,715 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Pianificazione Viaggio</title>
+
+  <!-- Leaflet (mappa open-source) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- SheetJS (legge XLSX in browser) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
-    header { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
-    input, select { padding:10px 12px; border:1px solid #ddd; border-radius:10px; }
-    .meta { color:#555; font-size:14px; margin: 8px 0 18px; }
-    .day { border:1px solid #eee; border-radius:14px; padding:14px; margin:12px 0; }
-    .day h2 { margin:0 0 10px; font-size:18px; }
-    .item { display:grid; grid-template-columns: 90px 1fr; gap:10px; padding:10px; border-radius:12px; }
-    .item + .item { border-top:1px dashed #eee; margin-top:8px; padding-top:14px; }
-    .badge { display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #ddd; }
-    .trip { background:#f6ffed; }
-    .notte { background:#f5f5ff; }
-    .row { color:#222; }
-    .muted { color:#666; font-size:13px; }
-    a { color: inherit; }
-    .kpi { display:flex; gap:14px; flex-wrap:wrap; }
-    .kpi div { padding:10px 12px; border:1px solid #eee; border-radius:12px; }
+    :root{
+      --bg:#ffffff;
+      --text:#111;
+      --muted:#666;
+      --line:#e9e9e9;
+      --card:#fff;
+      --pill:#f3f3f3;
+      --shadow: 0 8px 30px rgba(0,0,0,.06);
+      --radius:16px;
+    }
+    body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:0; background:var(--bg); color:var(--text);}
+    .wrap{ max-width:1100px; margin:0 auto; padding:22px; }
+    h1{ margin:0 0 14px; font-size:26px; letter-spacing:-.02em; }
+    .topbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:14px;}
+    .controls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    input[type="text"], select, button{
+      padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff;
+      font-size:14px;
+    }
+    button{ cursor:pointer; }
+    button.primary{ background:#111; color:#fff; border-color:#111; }
+    .tabs{ display:flex; gap:8px; margin:14px 0 12px; }
+    .tab{ padding:10px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; cursor:pointer; font-size:14px; }
+    .tab.active{ background:#111; color:#fff; border-color:#111; }
+
+    .kpis{ display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 18px; }
+    .kpi{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; box-shadow:var(--shadow); }
+    .kpi .v{ font-size:18px; font-weight:700; }
+    .kpi .l{ font-size:12px; color:var(--muted); margin-top:2px; }
+
+    .grid{ display:grid; grid-template-columns: 1.15fr .85fr; gap:14px; }
+    @media (max-width: 920px){ .grid{ grid-template-columns: 1fr; } }
+
+    .panel{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+    .panel .hd{ padding:14px 14px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px;}
+    .panel .hd h2{ margin:0; font-size:16px; }
+    .panel .bd{ padding:14px; }
+    .meta{ color:var(--muted); font-size:13px; }
+
+    .day{ border:1px solid var(--line); border-radius:16px; overflow:hidden; margin:12px 0; }
+    .dayTop{ padding:12px 14px; background:#fafafa; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .dayTop .d{ font-weight:700; }
+    .dayTop .s{ color:var(--muted); font-size:13px; }
+
+    .lanes{ display:grid; grid-template-columns: 1fr 1fr; gap:0; }
+    @media (max-width: 920px){ .lanes{ grid-template-columns: 1fr; } }
+    .lane{ padding:12px 14px; }
+    .laneTitle{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .laneTitle .pill{ font-size:12px; padding:4px 8px; border-radius:999px; background:var(--pill); border:1px solid var(--line); }
+    .laneTitle strong{ font-size:13px; }
+    .lane.trip{ background:#f7fff2; }
+    .lane.night{ background:#f6f6ff; border-left:1px solid var(--line); }
+    @media (max-width: 920px){ .lane.night{ border-left:none; border-top:1px solid var(--line);} }
+
+    .card{ border:1px solid var(--line); background:#fff; border-radius:14px; padding:10px 12px; margin:10px 0; }
+    .tripCard .main{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .tripCard .route{ font-weight:800; letter-spacing:-.01em; }
+    .tripCard .km{ font-weight:700; }
+    .sub{ margin-top:4px; color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:10px; }
+    .flag{ font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid var(--line); background:#fff; }
+    .nightCard .place{ font-weight:800; }
+    .nightCard .hotel{ font-size:13px; color:var(--muted); margin-top:2px; }
+    .link{ text-decoration:none; border-bottom:1px dashed #bbb; }
+    .warn{ border-color:#f0d7a7; background:#fffaf0; }
+    .ok{ border-color:#d4edd4; background:#f6fff6; }
+
+    #map{ height:520px; width:100%; border-radius:16px; }
+    .hidden{ display:none !important; }
+
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    th, td{ border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
+    th{ font-size:12px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+    .rowMini{ color:var(--muted); font-size:12px; margin-top:2px; }
   </style>
 </head>
 <body>
-  <h1>Pianificazione viaggio</h1>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Pianificazione viaggio</h1>
+        <div class="meta" id="sourceMeta">Fonte: Google Drive XLSX</div>
+      </div>
 
-  <header>
-    <input id="q" placeholder="Cerca (città, hotel, note...)" />
-    <select id="type">
-      <option value="">Tutte le attività</option>
-      <option value="Trip">Solo Trip</option>
-      <option value="Notte">Solo Notte</option>
-    </select>
-    <select id="city">
-      <option value="">Tutte le città</option>
-    </select>
-  </header>
+      <div class="controls">
+        <button class="primary" id="btnLoadDrive">Carica da Google Drive</button>
+        <label style="display:inline-flex; gap:8px; align-items:center;">
+          <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
+          <button id="btnPickFile" type="button">Carica XLSX dal PC</button>
+        </label>
+      </div>
+    </div>
 
-  <div class="kpi">
-    <div><strong id="kDays">-</strong><div class="muted">giorni nel piano</div></div>
-    <div><strong id="kTrips">-</strong><div class="muted">tratte (Trip)</div></div>
-    <div><strong id="kKm">-</strong><div class="muted">km totali (stimati)</div></div>
+    <div class="controls" style="margin-bottom:10px;">
+      <input id="q" type="text" placeholder="Cerca (città, hotel, note...)" style="min-width:260px;"/>
+      <select id="type">
+        <option value="">Tutte</option>
+        <option value="Trip">Trip</option>
+        <option value="Notte">Notte</option>
+      </select>
+      <select id="city"><option value="">Tutte le città</option></select>
+      <select id="status"><option value="">Tutti gli stati</option></select>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="kDays">—</div><div class="l">giorni</div></div>
+      <div class="kpi"><div class="v" id="kTrips">—</div><div class="l">tratte (Trip)</div></div>
+      <div class="kpi"><div class="v" id="kNights">—</div><div class="l">notti</div></div>
+      <div class="kpi"><div class="v" id="kKm">—</div><div class="l">km totali</div></div>
+      <div class="kpi"><div class="v" id="kCost">—</div><div class="l">costo totale</div></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="timeline">Timeline</div>
+      <div class="tab" data-tab="map">Mappa</div>
+      <div class="tab" data-tab="bookings">Prenotazioni</div>
+    </div>
+
+    <div id="view-timeline">
+      <div class="grid">
+        <div class="panel">
+          <div class="hd">
+            <h2>Giorno per giorno</h2>
+            <div class="meta" id="metaCount">—</div>
+          </div>
+          <div class="bd" id="timeline"></div>
+        </div>
+
+        <div class="panel">
+          <div class="hd">
+            <h2>Riepilogo città</h2>
+            <div class="meta">notti + tratte</div>
+          </div>
+          <div class="bd" id="citySummary"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-map" class="hidden">
+      <div class="panel">
+        <div class="hd">
+          <h2>Mappa (OpenStreetMap)</h2>
+          <div class="meta" id="mapMeta">Mostra tappe con Lat/Long</div>
+        </div>
+        <div class="bd">
+          <div id="map"></div>
+          <div class="meta" style="margin-top:10px;">
+            Suggerimento: compila “Lat / Long” (es. <code>45.44, 12.33</code>) per vedere marker e tratte.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-bookings" class="hidden">
+      <div class="panel">
+        <div class="hd">
+          <h2>Prenotazioni (solo Notti)</h2>
+          <div class="meta">hotel · link · stato · costo</div>
+        </div>
+        <div class="bd">
+          <div id="bookings"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <p class="meta" id="meta"></p>
-  <div id="out"></div>
-
 <script>
-  // --- util ---
-  const parseCSV = (text) => {
-    // parser CSV semplice (gestisce virgolette basilari)
-    const rows = [];
-    let row = [], cell = "", inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i], n = text[i+1];
-      if (c === '"' ) {
-        if (inQuotes && n === '"') { cell += '"'; i++; }
-        else inQuotes = !inQuotes;
-      } else if (!inQuotes && (c === ',' || c === '\n' || c === '\r')) {
-        if (c === ',' ) { row.push(cell); cell = ""; }
-        else {
-          if (cell.length || row.length) { row.push(cell); rows.push(row); }
-          row = []; cell = "";
-          if (c === '\r' && n === '\n') i++;
+  // =========================
+  // CONFIG: tuo file Drive
+  // =========================
+  const DRIVE_FILE_ID = "1-CdJBsSbpRtDrc-aw0t4ZEfoPD-rcxQL";
+  const DRIVE_DIRECT_URL = `https://drive.google.com/uc?export=download&id=${DRIVE_FILE_ID}`;
+
+  // intestazioni attese (come da tuo file)
+  const COLS = [
+    "Inc","N. days","Data","Attività","Partenza","Arrivo","Luogo","Km",
+    "Pernottamento","Stato","Costo","Note","Lat / Long","Link"
+  ];
+
+  let rows = [];
+  let map, mapLayerGroup, mapReady = false;
+
+  // =========================
+  // Helpers
+  // =========================
+  const norm = (s) => String(s ?? "").trim();
+  const low = (s) => norm(s).toLowerCase();
+
+  function toISO(ddmmyyyy){
+    const v = norm(ddmmyyyy);
+    const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(!m) return "";
+    const dd = m[1].padStart(2,"0");
+    const mm = m[2].padStart(2,"0");
+    const yy = m[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+  function fmtIT(iso){
+    const d = new Date(iso+"T00:00:00");
+    return d.toLocaleDateString("it-IT",{weekday:"short", day:"2-digit", month:"2-digit", year:"numeric"});
+  }
+
+  function parseLatLng(s){
+    // accetta "lat, long" o "lat long" o "lat;long"
+    const v = norm(s);
+    if(!v) return null;
+    const parts = v.split(/[,\s;]+/).filter(Boolean);
+    if(parts.length < 2) return null;
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    if(Number.isFinite(lat) && Number.isFinite(lng)) return {lat, lng};
+    return null;
+  }
+
+  function safeNum(v){
+    // accetta "123", "123,45", "€123" ecc.
+    const s = norm(v).replace(/[^\d,.\-]/g,"").replace(",",".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function activityClass(a){
+    const A = norm(a);
+    if(A === "Trip") return "trip";
+    if(A === "Notte") return "night";
+    return "";
+  }
+
+  // =========================
+  // XLSX loading
+  // =========================
+  async function loadXlsxFromUrl(url){
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("Download fallito (Drive/CORS o link non accessibile).");
+    const buf = await res.arrayBuffer();
+    return parseXlsx(buf);
+  }
+
+  async function loadXlsxFromFile(file){
+    const buf = await file.arrayBuffer();
+    return parseXlsx(buf);
+  }
+
+  function parseXlsx(arrayBuffer){
+    const wb = XLSX.read(arrayBuffer, {type:"array"});
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false});
+
+    // Normalizza chiavi e crea righe coerenti
+    const out = json
+      .map(obj => {
+        const r = {};
+        // copia tutte le proprietà con trim
+        for(const k of Object.keys(obj)){
+          r[norm(k)] = norm(obj[k]);
         }
-      } else {
-        cell += c;
-      }
-    }
-    if (cell.length || row.length) { row.push(cell); rows.push(row); }
-    return rows;
-  };
+        // assicurati che esistano tutte le colonne standard
+        for(const c of COLS){
+          if(!(c in r)) r[c] = "";
+        }
 
-  const toISODate = (ddmmyyyy) => {
-    // atteso: 23/03/2026
-    const [dd, mm, yyyy] = ddmmyyyy.trim().split("/");
-    if (!dd || !mm || !yyyy) return "";
-    return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
-  };
+        // campi derivati
+        r._dateISO = toISO(r["Data"]);
+        r._act = r["Attività"];
+        r._city = r["Luogo"] || r["Arrivo"] || r["Partenza"] || "";
+        r._km = safeNum(r["Km"]);
+        r._cost = safeNum(r["Costo"]);
+        r._latlng = parseLatLng(r["Lat / Long"]);
+        return r;
+      })
+      .filter(r => r._dateISO); // ignora righe senza data valida
 
-  const fmtIT = (iso) => {
-    const d = new Date(iso + "T00:00:00");
-    return d.toLocaleDateString("it-IT", { weekday:"short", day:"2-digit", month:"2-digit", year:"numeric" });
-  };
+    // Ordine: data, poi Trip prima di Notte (così prima lo spostamento e poi il pernotto)
+    out.sort((a,b) => a._dateISO.localeCompare(b._dateISO) || (norm(a._act)==="Trip" ? -1 : 1));
 
-  // --- stato ---
-  let data = [];
+    rows = out;
+    rebuildFilters();
+    renderAll();
+  }
 
-  // --- rendering ---
-  const render = () => {
-    const q = document.getElementById("q").value.trim().toLowerCase();
-    const type = document.getElementById("type").value;
-    const city = document.getElementById("city").value;
+  // =========================
+  // Filters + view state
+  // =========================
+  function getFilters(){
+    return {
+      q: low(document.getElementById("q").value),
+      type: norm(document.getElementById("type").value),
+      city: norm(document.getElementById("city").value),
+      status: norm(document.getElementById("status").value),
+    };
+  }
 
-    const filtered = data.filter(r => {
-      if (type && r["Attività"] !== type) return false;
-      if (city) {
-        const c = (r["Luogo"] || r["Arrivo"] || r["Partenza"] || "").toLowerCase();
-        if (c !== city.toLowerCase()) return false;
-      }
-      if (q) {
+  function applyFilters(data){
+    const f = getFilters();
+    return data.filter(r => {
+      if(f.type && norm(r["Attività"]) !== f.type) return false;
+      if(f.city && norm(r._city) !== f.city) return false;
+      if(f.status && norm(r["Stato"]) !== f.status) return false;
+      if(f.q){
         const blob = Object.values(r).join(" ").toLowerCase();
-        if (!blob.includes(q)) return false;
+        if(!blob.includes(f.q)) return false;
       }
       return true;
     });
+  }
+
+  function rebuildFilters(){
+    const citySet = new Set();
+    const statusSet = new Set();
+
+    rows.forEach(r => {
+      const c = norm(r._city);
+      if(c) citySet.add(c);
+      const st = norm(r["Stato"]);
+      if(st) statusSet.add(st);
+    });
+
+    const citySel = document.getElementById("city");
+    citySel.length = 1;
+    [...citySet].sort((a,b)=>a.localeCompare(b,"it")).forEach(c=>{
+      const o = document.createElement("option");
+      o.value = c; o.textContent = c;
+      citySel.appendChild(o);
+    });
+
+    const statusSel = document.getElementById("status");
+    statusSel.length = 1;
+    [...statusSet].sort((a,b)=>a.localeCompare(b,"it")).forEach(s=>{
+      const o = document.createElement("option");
+      o.value = s; o.textContent = s;
+      statusSel.appendChild(o);
+    });
+  }
+
+  // =========================
+  // Render KPI + Timeline + Summary + Bookings + Map
+  // =========================
+  function renderAll(){
+    const filtered = applyFilters(rows);
 
     // KPI
-    const daysSet = new Set(filtered.map(r => r._dateISO));
-    const trips = filtered.filter(r => r["Attività"] === "Trip").length;
-    const km = filtered.reduce((sum, r) => sum + (Number(r["Km"]) || 0), 0);
+    const days = new Set(filtered.map(r => r._dateISO)).size;
+    const trips = filtered.filter(r => norm(r["Attività"])==="Trip").length;
+    const nights = filtered.filter(r => norm(r["Attività"])==="Notte").length;
+    const km = filtered.reduce((s,r)=> s + (r._km||0), 0);
+    const cost = filtered.reduce((s,r)=> s + (r._cost||0), 0);
 
-    document.getElementById("kDays").textContent = daysSet.size;
-    document.getElementById("kTrips").textContent = trips;
+    document.getElementById("kDays").textContent = days || "—";
+    document.getElementById("kTrips").textContent = trips || "—";
+    document.getElementById("kNights").textContent = nights || "—";
     document.getElementById("kKm").textContent = km ? km.toLocaleString("it-IT") : "—";
+    document.getElementById("kCost").textContent = cost ? cost.toLocaleString("it-IT") : "—";
 
-    // raggruppa per giorno
-    const byDay = new Map();
-    for (const r of filtered) {
-      if (!byDay.has(r._dateISO)) byDay.set(r._dateISO, []);
-      byDay.get(r._dateISO).push(r);
-    }
-    const days = [...byDay.keys()].sort();
+    document.getElementById("metaCount").textContent = filtered.length ? `${filtered.length} righe` : "nessun risultato";
 
-    const out = document.getElementById("out");
+    renderTimeline(filtered);
+    renderCitySummary(filtered);
+    renderBookings(filtered);
+    renderMap(filtered);
+  }
+
+  function renderTimeline(data){
+    const out = document.getElementById("timeline");
     out.innerHTML = "";
 
-    for (const d of days) {
-      const box = document.createElement("div");
-      box.className = "day";
-      const items = byDay.get(d);
+    // group by day
+    const by = new Map();
+    for(const r of data){
+      if(!by.has(r._dateISO)) by.set(r._dateISO, []);
+      by.get(r._dateISO).push(r);
+    }
+    const days = [...by.keys()].sort();
 
-      box.innerHTML = `<h2>${fmtIT(d)}</h2>`;
-      for (const r of items) {
-        const isTrip = r["Attività"] === "Trip";
-        const badgeClass = isTrip ? "badge trip" : "badge notte";
-        const title = isTrip
-          ? `${r["Partenza"] || "—"} → ${r["Arrivo"] || "—"}`
-          : `${r["Luogo"] || r["Arrivo"] || r["Partenza"] || "—"}`;
+    for(const d of days){
+      const items = by.get(d);
+      const tripItems = items.filter(r => norm(r["Attività"])==="Trip");
+      const nightItems = items.filter(r => norm(r["Attività"])==="Notte");
 
-        const sub = isTrip
-          ? `${r["Km"] ? (r["Km"] + " km") : ""}`
-          : `${r["Pernottamento"] || ""}`;
+      const dayBox = document.createElement("div");
+      dayBox.className = "day";
 
-        const link = (r["Link"] && r["Link"] !== "?") ? r["Link"] : "";
-        const linkHTML = link ? ` · <a href="${link}" target="_blank" rel="noopener">link</a>` : "";
+      // day summary line
+      const dayKm = tripItems.reduce((s,r)=>s+(r._km||0),0);
+      const dayCost = items.reduce((s,r)=>s+(r._cost||0),0);
 
-        const el = document.createElement("div");
-        el.className = "item";
-        el.innerHTML = `
-          <div><span class="${badgeClass}">${r["Attività"]}</span></div>
-          <div class="row">
-            <div><strong>${title}</strong></div>
-            <div class="muted">${sub}${linkHTML}</div>
+      dayBox.innerHTML = `
+        <div class="dayTop">
+          <div class="d">${fmtIT(d)}</div>
+          <div class="s">${dayKm ? (dayKm.toLocaleString("it-IT")+" km") : ""}${dayKm && dayCost ? " · " : ""}${dayCost ? (dayCost.toLocaleString("it-IT")) : ""}</div>
+        </div>
+        <div class="lanes">
+          <div class="lane trip">
+            <div class="laneTitle"><span class="pill">TRIP</span><strong>Spostamenti</strong></div>
+            <div class="laneBody" data-lane="trip"></div>
           </div>
-        `;
-        box.appendChild(el);
+          <div class="lane night">
+            <div class="laneTitle"><span class="pill">NOTTE</span><strong>Pernotti</strong></div>
+            <div class="laneBody" data-lane="night"></div>
+          </div>
+        </div>
+      `;
+
+      const tripLane = dayBox.querySelector('[data-lane="trip"]');
+      const nightLane = dayBox.querySelector('[data-lane="night"]');
+
+      // Trip cards
+      if(tripItems.length === 0){
+        tripLane.innerHTML = `<div class="meta">Nessuno spostamento</div>`;
+      } else {
+        for(const r of tripItems){
+          const km = r._km;
+          const warn = km >= 700 ? "warn" : (km >= 500 ? "warn" : "");
+          const st = norm(r["Stato"]);
+          const cost = r._cost ? r._cost.toLocaleString("it-IT") : "";
+          const notes = norm(r["Note"]);
+          const link = norm(r["Link"]);
+
+          const card = document.createElement("div");
+          card.className = `card tripCard ${warn}`;
+
+          const route = `${norm(r["Partenza"]) || "—"} → ${norm(r["Arrivo"]) || "—"}`;
+          const flags = [
+            st ? `<span class="flag">${st}</span>` : "",
+            cost ? `<span class="flag">${cost}</span>` : "",
+            km ? `<span class="flag">${km.toLocaleString("it-IT")} km</span>` : ""
+          ].filter(Boolean).join("");
+
+          const linkHtml = (link && link !== "?") ? ` · <a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
+
+          card.innerHTML = `
+            <div class="main">
+              <div class="route">${route}</div>
+              <div>${flags}</div>
+            </div>
+            <div class="sub">
+              ${notes ? `<span>📝 ${notes}</span>` : ""}
+              ${linkHtml ? `<span>${linkHtml}</span>` : ""}
+            </div>
+          `;
+          tripLane.appendChild(card);
+        }
       }
-      out.appendChild(box);
+
+      // Night cards
+      if(nightItems.length === 0){
+        nightLane.innerHTML = `<div class="meta">Nessun pernotto</div>`;
+      } else {
+        for(const r of nightItems){
+          const place = norm(r["Luogo"]) || norm(r["Arrivo"]) || norm(r["Partenza"]) || "—";
+          const hotel = norm(r["Pernottamento"]);
+          const st = norm(r["Stato"]);
+          const cost = r._cost ? r._cost.toLocaleString("it-IT") : "";
+          const notes = norm(r["Note"]);
+          const link = norm(r["Link"]);
+          const ok = st && ["prenotato","pagato","confermato"].includes(low(st)) ? "ok" : "";
+
+          const linkHtml = (link && link !== "?") ? `<a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
+
+          const card = document.createElement("div");
+          card.className = `card nightCard ${ok}`;
+          card.innerHTML = `
+            <div class="place">📍 ${place}</div>
+            <div class="hotel">🏨 ${hotel || "—"}</div>
+            <div class="sub">
+              ${st ? `<span class="flag">${st}</span>` : ""}
+              ${cost ? `<span class="flag">${cost}</span>` : ""}
+              ${linkHtml ? `<span>🔗 ${linkHtml}</span>` : ""}
+              ${notes ? `<span>📝 ${notes}</span>` : ""}
+            </div>
+          `;
+          nightLane.appendChild(card);
+        }
+      }
+
+      out.appendChild(dayBox);
     }
 
-    document.getElementById("meta").textContent =
-      filtered.length ? `${filtered.length} righe mostrate` : "Nessun risultato con questi filtri.";
-  };
+    if(days.length === 0){
+      out.innerHTML = `<div class="meta">Nessun dato da mostrare con questi filtri.</div>`;
+    }
+  }
 
-  const fillCityFilter = () => {
-    const cities = new Set();
-    data.forEach(r => {
-      const c = (r["Luogo"] || r["Arrivo"] || r["Partenza"] || "").trim();
-      if (c) cities.add(c);
+  function renderCitySummary(data){
+    const out = document.getElementById("citySummary");
+    // summary by city
+    const m = new Map();
+    for(const r of data){
+      const c = norm(r._city);
+      if(!c) continue;
+      if(!m.has(c)) m.set(c, {nights:0, tripsOut:0, tripsIn:0, km:0, cost:0});
+      const s = m.get(c);
+      const act = norm(r["Attività"]);
+      if(act === "Notte") s.nights++;
+      if(act === "Trip"){
+        s.km += (r._km||0);
+        const from = norm(r["Partenza"]);
+        const to = norm(r["Arrivo"]);
+        if(from === c) s.tripsOut++;
+        if(to === c) s.tripsIn++;
+      }
+      s.cost += (r._cost||0);
+    }
+
+    const items = [...m.entries()].sort((a,b)=> (b[1].nights - a[1].nights) || a[0].localeCompare(b[0],"it"));
+    if(items.length === 0){
+      out.innerHTML = `<div class="meta">Nessuna città (controlla “Luogo/Arrivo/Partenza”).</div>`;
+      return;
+    }
+
+    out.innerHTML = items.map(([city, s]) => {
+      const km = s.km ? `${s.km.toLocaleString("it-IT")} km` : "—";
+      const cost = s.cost ? `${s.cost.toLocaleString("it-IT")}` : "—";
+      return `
+        <div class="card">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+            <div style="font-weight:800;">${city}</div>
+            <div class="meta">${s.nights} notti</div>
+          </div>
+          <div class="sub">
+            <span class="flag">Trip out: ${s.tripsOut}</span>
+            <span class="flag">Trip in: ${s.tripsIn}</span>
+            <span class="flag">${km}</span>
+            <span class="flag">${cost}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderBookings(data){
+    const out = document.getElementById("bookings");
+    const nights = data.filter(r => norm(r["Attività"])==="Notte");
+    if(!nights.length){
+      out.innerHTML = `<div class="meta">Nessuna notte con questi filtri.</div>`;
+      return;
+    }
+
+    // group by city
+    const byCity = new Map();
+    nights.forEach(r=>{
+      const c = norm(r._city) || "—";
+      if(!byCity.has(c)) byCity.set(c, []);
+      byCity.get(c).push(r);
     });
-    const sel = document.getElementById("city");
-    // reset mantenendo la prima opzione
-    sel.length = 1;
-    [...cities].sort((a,b)=>a.localeCompare(b)).forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = c; opt.textContent = c;
-      sel.appendChild(opt);
+
+    let html = "";
+    for(const [city, items] of [...byCity.entries()].sort((a,b)=>a[0].localeCompare(b[0],"it"))){
+      html += `<h3 style="margin:10px 0 6px; font-size:16px;">${city} <span class="meta">(${items.length} notti)</span></h3>`;
+      html += `<table>
+        <thead><tr>
+          <th>Data</th><th>Hotel</th><th>Stato</th><th>Costo</th><th>Link / Note</th>
+        </tr></thead><tbody>`;
+
+      for(const r of items.sort((a,b)=>a._dateISO.localeCompare(b._dateISO))){
+        const link = norm(r["Link"]);
+        const linkHtml = (link && link !== "?") ? `<a class="link" href="${link}" target="_blank" rel="noopener">apri</a>` : "—";
+        html += `<tr>
+          <td>${fmtIT(r._dateISO)}</td>
+          <td>${norm(r["Pernottamento"]) || "—"}</td>
+          <td>${norm(r["Stato"]) || "—"}</td>
+          <td>${r._cost ? r._cost.toLocaleString("it-IT") : "—"}</td>
+          <td>
+            ${linkHtml}
+            ${norm(r["Note"]) ? `<div class="rowMini">📝 ${norm(r["Note"])}</div>` : ""}
+          </td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+    out.innerHTML = html;
+  }
+
+  function initMap(){
+    if(mapReady) return;
+    mapReady = true;
+
+    map = L.map('map', { scrollWheelZoom:true }).setView([41.9, 12.5], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    mapLayerGroup = L.layerGroup().addTo(map);
+  }
+
+  function renderMap(data){
+    // render solo se tab map è visibile o map è già inizializzata
+    const mapViewVisible = !document.getElementById("view-map").classList.contains("hidden");
+    if(!mapViewVisible && !mapReady) return;
+
+    initMap();
+    mapLayerGroup.clearLayers();
+
+    // markers per città con lat/long (prende la prima occorrenza)
+    const cityToLatLng = new Map();
+    for(const r of data){
+      const c = norm(r._city);
+      if(!c) continue;
+      if(!cityToLatLng.has(c) && r._latlng) cityToLatLng.set(c, r._latlng);
+    }
+
+    const markers = [];
+    for(const [city, ll] of cityToLatLng.entries()){
+      const mk = L.marker([ll.lat, ll.lng])
+        .bindPopup(`<strong>${city}</strong><br/>Lat/Lng: ${ll.lat}, ${ll.lng}`);
+      mk.addTo(mapLayerGroup);
+      markers.push(mk);
+    }
+
+    // polyline tratte Trip (se entrambe le città hanno coords)
+    const tripRows = data.filter(r => norm(r["Attività"])==="Trip");
+    const lines = [];
+    for(const r of tripRows){
+      const from = norm(r["Partenza"]);
+      const to = norm(r["Arrivo"]);
+      const a = cityToLatLng.get(from);
+      const b = cityToLatLng.get(to);
+      if(a && b){
+        const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]]);
+        line.bindPopup(`<strong>${from} → ${to}</strong>${r._km ? `<br/>${r._km.toLocaleString("it-IT")} km` : ""}`);
+        line.addTo(mapLayerGroup);
+        lines.push(line);
+      }
+    }
+
+    // fit bounds
+    const allLayers = [...markers, ...lines];
+    if(allLayers.length){
+      const group = L.featureGroup(allLayers);
+      map.fitBounds(group.getBounds().pad(0.15));
+      document.getElementById("mapMeta").textContent = `${markers.length} tappe · ${lines.length} tratte con coordinate`;
+    } else {
+      document.getElementById("mapMeta").textContent = "Nessuna coordinata trovata: compila “Lat / Long”";
+      map.setView([41.9, 12.5], 5);
+    }
+  }
+
+  // =========================
+  // Tabs
+  // =========================
+  function setTab(name){
+    document.querySelectorAll(".tab").forEach(t=>{
+      t.classList.toggle("active", t.dataset.tab === name);
     });
-  };
+    document.getElementById("view-timeline").classList.toggle("hidden", name!=="timeline");
+    document.getElementById("view-map").classList.toggle("hidden", name!=="map");
+    document.getElementById("view-bookings").classList.toggle("hidden", name!=="bookings");
+    if(name==="map") renderMap(applyFilters(rows)); // forza render mappa quando entri
+  }
 
-  // --- load ---
-  (async function init() {
-    const res = await fetch("./viaggio.csv");
-    const text = await res.text();
-    const rows = parseCSV(text);
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=> setTab(t.dataset.tab));
+  });
 
-    const header = rows[0].map(h => h.trim());
-    data = rows.slice(1)
-      .filter(r => r.some(x => String(x).trim() !== ""))
-      .map(r => {
-        const obj = {};
-        header.forEach((h, i) => obj[h] = (r[i] ?? "").trim());
-        obj._dateISO = toISODate(obj["Data"] || "");
-        return obj;
-      })
-      .filter(r => r._dateISO);
+  // =========================
+  // UI events
+  // =========================
+  ["q","type","city","status"].forEach(id=>{
+    const el = document.getElementById(id);
+    el.addEventListener("input", renderAll);
+    el.addEventListener("change", renderAll);
+  });
 
-    // ordina per data e poi Trip prima di Notte (di solito ha senso)
-    data.sort((a,b) => (a._dateISO.localeCompare(b._dateISO)) || (a["Attività"].localeCompare(b["Attività"])));
+  // load buttons
+  document.getElementById("btnLoadDrive").addEventListener("click", async ()=>{
+    document.getElementById("sourceMeta").textContent = "Fonte: Google Drive XLSX (download diretto)";
+    try{
+      await loadXlsxFromUrl(DRIVE_DIRECT_URL);
+    } catch(err){
+      alert(
+        "Non riesco a scaricare l'XLSX da Drive (spesso è CORS).\n\n" +
+        "Soluzione rapida: usa 'Carica XLSX dal PC' e seleziona lo stesso file.\n\n" +
+        "Dettaglio: " + err.message
+      );
+    }
+  });
 
-    fillCityFilter();
-    render();
+  document.getElementById("btnPickFile").addEventListener("click", ()=>{
+    document.getElementById("fileInput").click();
+  });
 
-    ["q","type","city"].forEach(id => document.getElementById(id).addEventListener("input", render));
-    document.getElementById("type").addEventListener("change", render);
-    document.getElementById("city").addEventListener("change", render);
+  document.getElementById("fileInput").addEventListener("change", async (e)=>{
+    const file = e.target.files?.[0];
+    if(!file) return;
+    document.getElementById("sourceMeta").textContent = `Fonte: file locale (${file.name})`;
+    await loadXlsxFromFile(file);
+  });
+
+  // auto-load all'avvio (prova Drive)
+  (async function boot(){
+    try{
+      await loadXlsxFromUrl(DRIVE_DIRECT_URL);
+    } catch{
+      // silenzioso: l'utente può cliccare o caricare file locale
+      document.getElementById("sourceMeta").textContent =
+        "Fonte: Google Drive XLSX (se non carica, usa 'Carica XLSX dal PC')";
+    }
   })();
 </script>
 </body>
