@@ -73,13 +73,25 @@
     th, td{ border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
     th{ font-size:12px; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
     .rowMini{ color:var(--muted); font-size:12px; margin-top:2px; }
+    .smallBtn{
+      padding:8px 10px; border:1px solid var(--line); border-radius:12px; background:#fff; cursor:pointer;
+      font-size:13px;
+    }
   </style>
 </head>
 
 <body>
   <div class="wrap">
-    <h1>Pianificazione viaggio</h1>
-    <div class="meta" id="sourceMeta">Fonte: viaggio2.csv (stessa cartella del sito)</div>
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:baseline; justify-content:space-between;">
+      <div>
+        <h1>Pianificazione viaggio</h1>
+        <div class="meta" id="sourceMeta">Fonte: Google Sheets (CSV pubblicato)</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="smallBtn" id="btnReload">Ricarica</button>
+        <button class="smallBtn" id="btnClearGeo">Svuota cache mappa</button>
+      </div>
+    </div>
 
     <div class="controls">
       <input id="q" type="text" placeholder="Cerca (città, hotel, note...)" style="min-width:260px;"/>
@@ -129,13 +141,14 @@
     <div id="view-map" class="hidden">
       <div class="panel">
         <div class="hd">
-          <h2>Mappa (OpenStreetMap)</h2>
+          <h2>Mappa (OpenStreetMap) · indirizzi</h2>
           <div class="meta" id="mapMeta">—</div>
         </div>
         <div class="bd">
           <div id="map"></div>
           <div class="meta" style="margin-top:10px;">
-            Compila “Lat / Long” nel CSV in formato <code>lat, long</code> (es. <code>41.3874, 2.1686</code>).
+            La mappa usa il geocoding di OpenStreetMap (Nominatim). Per risultati migliori, scrivi luoghi completi:
+            <code>Valencia, Spain</code> invece di solo <code>Valencia</code>.
           </div>
         </div>
       </div>
@@ -153,51 +166,58 @@
   </div>
 
 <script>
-  // ========= CONFIG =========
-  const CSV_PATH = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv";
+  // =========================
+  // 1) SORGENTE DATI (il tuo link)
+  // =========================
+  const CSV_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv";
 
-  const COLS = [
-    "Inc","N. days","Data","Attività","Partenza","Arrivo","Luogo","Km",
-    "Pernottamento","Stato","Costo","Note","Lat / Long","Link"
-  ];
+  // =========================
+  // 2) ALIAS INTESTAZIONI
+  //    -> puoi rinominare le colonne, basta che rientrino in uno di questi alias.
+  //    Se cambi un titolo e non viene riconosciuto, aggiungilo qui.
+  // =========================
+  const HEADER_ALIASES = {
+    inc:        ["inc", "index", "#", "id"],
+    days:       ["n days", "n. days", "days", "giorni", "durata"],
+    date:       ["data", "date", "giorno"],
+    activity:   ["attività", "attivita", "activity", "tipo", "type"],
+    from:       ["partenza", "da", "from", "start", "origine", "departure"],
+    to:         ["arrivo", "a", "to", "end", "destinazione", "arrival"],
+    place:      ["luogo", "citta", "città", "city", "location", "tappa", "stop"],
+    km:         ["km", "kms", "distanza", "distance"],
+    lodging:    ["pernottamento", "hotel", "alloggio", "accommodation", "lodging"],
+    status:     ["stato", "status", "prenotazione", "booking status"],
+    cost:       ["costo", "cost", "prezzo", "price", "budget"],
+    notes:      ["note", "notes", "commenti", "comment", "memo"],
+    address:    ["indirizzo", "address", "location address", "place address"],
+    link:       ["link", "url", "booking link", "website"]
+  };
 
+  // =========================
+  // Stato
+  // =========================
   let rows = [];
   let map, mapLayerGroup, mapReady = false;
 
-  // ========= CSV parser (robusto per virgolette) =========
-  function parseCSV(text){
-    const rows = [];
-    let row = [], cell = "", inQuotes = false;
-
-    for(let i=0;i<text.length;i++){
-      const c = text[i];
-      const n = text[i+1];
-
-      if(c === '"'){
-        if(inQuotes && n === '"'){ cell += '"'; i++; }
-        else inQuotes = !inQuotes;
-      } else if(!inQuotes && (c === ',' || c === '\n' || c === '\r')){
-        if(c === ','){ row.push(cell); cell = ""; }
-        else{
-          row.push(cell);
-          // ignora righe vuote
-          if(row.some(x => String(x).trim() !== "")) rows.push(row);
-          row = []; cell = "";
-          if(c === '\r' && n === '\n') i++;
-        }
-      } else {
-        cell += c;
-      }
-    }
-    if(cell.length || row.length){
-      row.push(cell);
-      if(row.some(x => String(x).trim() !== "")) rows.push(row);
-    }
-    return rows;
-  }
-
+  // =========================
+  // Helpers base
+  // =========================
   const norm = (s) => String(s ?? "").trim();
   const low = (s) => norm(s).toLowerCase();
+
+  function stripDiacritics(s){
+    return String(s ?? "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  function keyifyHeader(s){
+    // normalizza: minuscolo, senza accenti, sostituisce separatori, rimuove doppie spaziature
+    return stripDiacritics(low(s))
+      .replace(/[_\-]+/g, " ")
+      .replace(/[^\w\s.]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 
   function toISO(ddmmyyyy){
     const v = norm(ddmmyyyy);
@@ -214,57 +234,183 @@
     const n = Number(s);
     return Number.isFinite(n) ? n : 0;
   }
-  function parseLatLng(s){
-    const v = norm(s);
-    if(!v) return null;
-    const parts = v.split(/[,\s;]+/).filter(Boolean);
-    if(parts.length < 2) return null;
-    const lat = Number(parts[0]);
-    const lng = Number(parts[1]);
-    if(Number.isFinite(lat) && Number.isFinite(lng)) return {lat, lng};
+
+  // =========================
+  // CSV parser (virgolette ok)
+  // =========================
+  function parseCSV(text){
+    const out = [];
+    let row = [], cell = "", inQuotes = false;
+
+    for(let i=0;i<text.length;i++){
+      const c = text[i];
+      const n = text[i+1];
+
+      if(c === '"'){
+        if(inQuotes && n === '"'){ cell += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if(!inQuotes && (c === ',' || c === '\n' || c === '\r')){
+        if(c === ','){ row.push(cell); cell = ""; }
+        else{
+          row.push(cell);
+          if(row.some(x => String(x).trim() !== "")) out.push(row);
+          row = []; cell = "";
+          if(c === '\r' && n === '\n') i++;
+        }
+      } else {
+        cell += c;
+      }
+    }
+    if(cell.length || row.length){
+      row.push(cell);
+      if(row.some(x => String(x).trim() !== "")) out.push(row);
+    }
+    return out;
+  }
+
+  // =========================
+  // Header mapping (robusto)
+  // =========================
+  function buildHeaderIndex(headerRow){
+    const headerKeys = headerRow.map(h => keyifyHeader(h));
+
+    // mappa: canonical -> index colonna
+    const idx = {};
+
+    for(const canonical of Object.keys(HEADER_ALIASES)){
+      const aliases = HEADER_ALIASES[canonical].map(a => keyifyHeader(a));
+      let found = -1;
+
+      for(let i=0;i<headerKeys.length;i++){
+        if(aliases.includes(headerKeys[i])){
+          found = i;
+          break;
+        }
+      }
+      idx[canonical] = found;
+    }
+
+    return idx;
+  }
+
+  function getCell(row, idx, canonical){
+    const i = idx[canonical];
+    if(i === undefined || i < 0) return "";
+    return norm(row[i]);
+  }
+
+  // =========================
+  // Geocoding (Nominatim / OSM)
+  // =========================
+  const GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/search";
+  const geocodeCacheKey = "geocode_cache_v2";
+  function loadGeocodeCache(){
+    try { return JSON.parse(localStorage.getItem(geocodeCacheKey) || "{}"); }
+    catch { return {}; }
+  }
+  function saveGeocodeCache(cache){
+    try { localStorage.setItem(geocodeCacheKey, JSON.stringify(cache)); } catch {}
+  }
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  let lastGeocodeAt = 0;
+
+  async function geocodeNominatim(query){
+    const q = norm(query);
+    if(!q) return null;
+
+    const cache = loadGeocodeCache();
+    if(cache[q]) return cache[q];
+
+    // rate limit gentile
+    const now = Date.now();
+    const wait = Math.max(0, 1100 - (now - lastGeocodeAt));
+    if(wait) await sleep(wait);
+
+    const url = `${GEOCODE_ENDPOINT}?format=json&q=${encodeURIComponent(q)}&limit=1`;
+    const res = await fetch(url, { headers: { "Accept":"application/json" } });
+    lastGeocodeAt = Date.now();
+    if(!res.ok) return null;
+
+    const data = await res.json();
+    if(!data || !data.length) return null;
+
+    const hit = {
+      lat: Number(data[0].lat),
+      lng: Number(data[0].lon),
+      display: data[0].display_name
+    };
+    if(Number.isFinite(hit.lat) && Number.isFinite(hit.lng)){
+      cache[q] = hit;
+      saveGeocodeCache(cache);
+      return hit;
+    }
     return null;
   }
 
-  // ========= LOAD =========
+  // =========================
+  // Load
+  // =========================
   async function load(){
-    const res = await fetch(CSV_PATH, {cache:"no-store"});
-    if(!res.ok){
-      throw new Error(`Impossibile caricare ${CSV_PATH}. Controlla che sia nella stessa cartella e che GitHub Pages lo serva.`);
-    }
+    document.getElementById("sourceMeta").textContent = "Carico dati…";
+
+    // anti-cache
+    const url = CSV_URL + "&t=" + Date.now();
+    const res = await fetch(url, { cache:"no-store" });
+    if(!res.ok) throw new Error("Impossibile caricare il CSV pubblicato.");
+
     const text = await res.text();
     const matrix = parseCSV(text);
+    if(!matrix.length) throw new Error("CSV vuoto o non leggibile.");
 
-    const header = matrix[0].map(h => norm(h));
-    // mappa posizione colonne
-    const idx = new Map();
-    header.forEach((h,i)=>idx.set(h,i));
+    const header = matrix[0];
+    const idx = buildHeaderIndex(header);
 
-    // se il CSV usa ';' come separatore, qui non lo rileviamo: in quel caso esporta con virgole.
-    // (se ti serve, posso aggiungere autodetect.)
+    // richieste minime: date + activity (se activity manca, comunque ok ma la UI non separa bene)
+    if(idx.date < 0) throw new Error("Non trovo la colonna Data/Date (rinomina o aggiungi alias).");
 
     rows = matrix.slice(1).map(r=>{
-      const obj = {};
-      // riempi solo le colonne attese (se mancanti, vuoto)
-      for(const c of COLS){
-        const i = idx.get(c);
-        obj[c] = i === undefined ? "" : norm(r[i]);
-      }
-      obj._dateISO = toISO(obj["Data"]);
-      obj._act = obj["Attività"];
-      obj._city = obj["Luogo"] || obj["Arrivo"] || obj["Partenza"] || "";
-      obj._km = safeNum(obj["Km"]);
-      obj._cost = safeNum(obj["Costo"]);
-      obj._latlng = parseLatLng(obj["Lat / Long"]);
-      return obj;
-    }).filter(r=>r._dateISO);
+      const obj = {
+        inc:      getCell(r, idx, "inc"),
+        days:     getCell(r, idx, "days"),
+        date:     getCell(r, idx, "date"),
+        activity: getCell(r, idx, "activity"),
+        from:     getCell(r, idx, "from"),
+        to:       getCell(r, idx, "to"),
+        place:    getCell(r, idx, "place"),
+        km:       getCell(r, idx, "km"),
+        lodging:  getCell(r, idx, "lodging"),
+        status:   getCell(r, idx, "status"),
+        cost:     getCell(r, idx, "cost"),
+        notes:    getCell(r, idx, "notes"),
+        address:  getCell(r, idx, "address"),
+        link:     getCell(r, idx, "link"),
+      };
 
-    rows.sort((a,b)=> a._dateISO.localeCompare(b._dateISO) || (norm(a._act)==="Trip" ? -1 : 1));
+      obj._dateISO = toISO(obj.date);
+      obj._km = safeNum(obj.km);
+      obj._cost = safeNum(obj.cost);
+
+      // città/tappa “di riferimento”
+      obj._city = obj.place || obj.to || obj.from || "";
+
+      // indirizzo per la mappa (priorità: address > place > to/from)
+      obj._addr = obj.address || obj.place || obj.to || obj.from || "";
+
+      return obj;
+    }).filter(r => r._dateISO);
+
+    // ordine: per data, poi Trip prima di Notte
+    rows.sort((a,b)=> a._dateISO.localeCompare(b._dateISO) || (norm(a.activity)==="Trip" ? -1 : 1));
 
     rebuildFilters();
     renderAll();
+
+    document.getElementById("sourceMeta").textContent = `Fonte: Google Sheets (righe: ${rows.length})`;
   }
 
-  // ========= FILTERS =========
+  // =========================
+  // Filters
+  // =========================
   function getFilters(){
     return {
       q: low(document.getElementById("q").value),
@@ -276,9 +422,9 @@
   function applyFilters(data){
     const f = getFilters();
     return data.filter(r=>{
-      if(f.type && norm(r["Attività"]) !== f.type) return false;
+      if(f.type && norm(r.activity) !== f.type) return false;
       if(f.city && norm(r._city) !== f.city) return false;
-      if(f.status && norm(r["Stato"]) !== f.status) return false;
+      if(f.status && norm(r.status) !== f.status) return false;
       if(f.q){
         const blob = Object.values(r).join(" ").toLowerCase();
         if(!blob.includes(f.q)) return false;
@@ -291,7 +437,7 @@
     const statusSet = new Set();
     rows.forEach(r=>{
       const c = norm(r._city); if(c) citySet.add(c);
-      const st = norm(r["Stato"]); if(st) statusSet.add(st);
+      const st = norm(r.status); if(st) statusSet.add(st);
     });
 
     const citySel = document.getElementById("city");
@@ -307,13 +453,15 @@
     });
   }
 
-  // ========= RENDER =========
+  // =========================
+  // Render
+  // =========================
   function renderAll(){
     const filtered = applyFilters(rows);
 
     const days = new Set(filtered.map(r=>r._dateISO)).size;
-    const trips = filtered.filter(r=>norm(r["Attività"])==="Trip").length;
-    const nights = filtered.filter(r=>norm(r["Attività"])==="Notte").length;
+    const trips = filtered.filter(r=>norm(r.activity)==="Trip").length;
+    const nights = filtered.filter(r=>norm(r.activity)==="Notte").length;
     const km = filtered.reduce((s,r)=>s+(r._km||0),0);
     const cost = filtered.reduce((s,r)=>s+(r._cost||0),0);
 
@@ -328,7 +476,7 @@
     renderTimeline(filtered);
     renderCitySummary(filtered);
     renderBookings(filtered);
-    renderMap(filtered);
+    renderMap(filtered); // async, non blocca la UI
   }
 
   function renderTimeline(data){
@@ -344,8 +492,8 @@
 
     for(const d of days){
       const items = by.get(d);
-      const tripItems = items.filter(r=>norm(r["Attività"])==="Trip");
-      const nightItems = items.filter(r=>norm(r["Attività"])==="Notte");
+      const tripItems = items.filter(r=>norm(r.activity)==="Trip");
+      const nightItems = items.filter(r=>norm(r.activity)==="Notte");
 
       const dayKm = tripItems.reduce((s,r)=>s+(r._km||0),0);
       const dayCost = items.reduce((s,r)=>s+(r._cost||0),0);
@@ -378,13 +526,13 @@
         for(const r of tripItems){
           const km = r._km;
           const warn = (km >= 500) ? "warn" : "";
-          const st = norm(r["Stato"]);
+          const st = norm(r.status);
           const cost = r._cost ? r._cost.toLocaleString("it-IT") : "";
-          const notes = norm(r["Note"]);
-          const link = norm(r["Link"]);
+          const notes = norm(r.notes);
+          const link = norm(r.link);
           const linkHtml = (link && link !== "?") ? ` · <a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
 
-          const route = `${norm(r["Partenza"]) || "—"} → ${norm(r["Arrivo"]) || "—"}`;
+          const route = `${norm(r.from) || "—"} → ${norm(r.to) || "—"}`;
 
           const card = document.createElement("div");
           card.className = `card ${warn}`;
@@ -406,12 +554,12 @@
         nightLane.innerHTML = `<div class="meta">Nessun pernotto</div>`;
       } else {
         for(const r of nightItems){
-          const place = norm(r["Luogo"]) || norm(r["Arrivo"]) || norm(r["Partenza"]) || "—";
-          const hotel = norm(r["Pernottamento"]);
-          const st = norm(r["Stato"]);
+          const place = norm(r.place) || norm(r.to) || norm(r.from) || "—";
+          const hotel = norm(r.lodging);
+          const st = norm(r.status);
           const cost = r._cost ? r._cost.toLocaleString("it-IT") : "";
-          const notes = norm(r["Note"]);
-          const link = norm(r["Link"]);
+          const notes = norm(r.notes);
+          const link = norm(r.link);
           const ok = st && ["prenotato","pagato","confermato"].includes(low(st)) ? "ok" : "";
           const linkHtml = (link && link !== "?") ? `<a class="link" href="${link}" target="_blank" rel="noopener">link</a>` : "";
 
@@ -448,12 +596,12 @@
       if(!c) continue;
       if(!m.has(c)) m.set(c, {nights:0, tripsOut:0, tripsIn:0, km:0, cost:0});
       const s = m.get(c);
-      const act = norm(r["Attività"]);
+      const act = norm(r.activity);
       if(act === "Notte") s.nights++;
       if(act === "Trip"){
         s.km += (r._km||0);
-        const from = norm(r["Partenza"]);
-        const to = norm(r["Arrivo"]);
+        const from = norm(r.from);
+        const to = norm(r.to);
         if(from === c) s.tripsOut++;
         if(to === c) s.tripsIn++;
       }
@@ -462,7 +610,7 @@
 
     const items = [...m.entries()].sort((a,b)=> (b[1].nights - a[1].nights) || a[0].localeCompare(b[0],"it"));
     if(!items.length){
-      out.innerHTML = `<div class="meta">Nessuna città (controlla Luogo/Arrivo/Partenza).</div>`;
+      out.innerHTML = `<div class="meta">Nessuna città (controlla colonne città/luogo).</div>`;
       return;
     }
 
@@ -484,7 +632,7 @@
 
   function renderBookings(data){
     const out = document.getElementById("bookings");
-    const nights = data.filter(r=>norm(r["Attività"])==="Notte");
+    const nights = data.filter(r=>norm(r.activity)==="Notte");
     if(!nights.length){
       out.innerHTML = `<div class="meta">Nessuna notte con questi filtri.</div>`;
       return;
@@ -506,16 +654,16 @@
         </tr></thead><tbody>`;
 
       for(const r of items.sort((a,b)=>a._dateISO.localeCompare(b._dateISO))){
-        const link = norm(r["Link"]);
+        const link = norm(r.link);
         const linkHtml = (link && link !== "?") ? `<a class="link" href="${link}" target="_blank" rel="noopener">apri</a>` : "—";
         html += `<tr>
           <td>${fmtIT(r._dateISO)}</td>
-          <td>${norm(r["Pernottamento"]) || "—"}</td>
-          <td>${norm(r["Stato"]) || "—"}</td>
+          <td>${norm(r.lodging) || "—"}</td>
+          <td>${norm(r.status) || "—"}</td>
           <td>${r._cost ? r._cost.toLocaleString("it-IT") : "—"}</td>
           <td>
             ${linkHtml}
-            ${norm(r["Note"]) ? `<div class="rowMini">📝 ${norm(r["Note"])}</div>` : ""}
+            ${norm(r.notes) ? `<div class="rowMini">📝 ${norm(r.notes)}</div>` : ""}
           </td>
         </tr>`;
       }
@@ -524,7 +672,9 @@
     out.innerHTML = html;
   }
 
-  // ========= MAP =========
+  // =========================
+  // Map
+  // =========================
   function initMap(){
     if(mapReady) return;
     mapReady = true;
@@ -536,33 +686,43 @@
     mapLayerGroup = L.layerGroup().addTo(map);
   }
 
-  function renderMap(data){
+  async function renderMap(data){
     const mapVisible = !document.getElementById("view-map").classList.contains("hidden");
     if(!mapVisible && !mapReady) return;
 
     initMap();
     mapLayerGroup.clearLayers();
 
-    const cityToLatLng = new Map();
+    // 1) tappe uniche: nome (city) -> query (addr)
+    const stops = new Map();
     for(const r of data){
-      const c = norm(r._city);
-      if(!c) continue;
-      if(!cityToLatLng.has(c) && r._latlng) cityToLatLng.set(c, r._latlng);
+      const city = norm(r._city);
+      const addr = norm(r._addr);
+      if(city && addr && !stops.has(city)) stops.set(city, addr);
     }
 
+    // 2) geocoding sequenziale (rate-limit)
+    const cityToLatLng = new Map();
+    for(const [city, addr] of stops.entries()){
+      const hit = await geocodeNominatim(addr);
+      if(hit) cityToLatLng.set(city, {lat: hit.lat, lng: hit.lng, display: hit.display, q: addr});
+    }
+
+    // 3) marker
     const markers = [];
     for(const [city, ll] of cityToLatLng.entries()){
       const mk = L.marker([ll.lat, ll.lng])
-        .bindPopup(`<strong>${city}</strong><br/>${ll.lat}, ${ll.lng}`);
+        .bindPopup(`<strong>${city}</strong><br/>${ll.q}<br/><span style="color:#666">${ll.display || ""}</span>`);
       mk.addTo(mapLayerGroup);
       markers.push(mk);
     }
 
-    const tripRows = data.filter(r=>norm(r["Attività"])==="Trip");
+    // 4) linee Trip
+    const tripRows = data.filter(r => norm(r.activity) === "Trip");
     const lines = [];
     for(const r of tripRows){
-      const from = norm(r["Partenza"]);
-      const to = norm(r["Arrivo"]);
+      const from = norm(r.from);
+      const to = norm(r.to);
       const a = cityToLatLng.get(from);
       const b = cityToLatLng.get(to);
       if(a && b){
@@ -573,18 +733,22 @@
       }
     }
 
+    // 5) fit bounds
     const allLayers = [...markers, ...lines];
     if(allLayers.length){
       const group = L.featureGroup(allLayers);
       map.fitBounds(group.getBounds().pad(0.15));
-      document.getElementById("mapMeta").textContent = `${markers.length} tappe · ${lines.length} tratte (con coordinate)`;
+      document.getElementById("mapMeta").textContent = `${markers.length} tappe geocodificate · ${lines.length} tratte`;
     } else {
-      document.getElementById("mapMeta").textContent = "Nessuna coordinata trovata. Compila la colonna “Lat / Long”.";
+      document.getElementById("mapMeta").textContent =
+        "Nessuna tappa geocodificata. Scrivi indirizzi più completi (es. “Paris, France”).";
       map.setView([41.9, 12.5], 5);
     }
   }
 
-  // ========= TABS =========
+  // =========================
+  // Tabs
+  // =========================
   function setTab(name){
     document.querySelectorAll(".tab").forEach(t=> t.classList.toggle("active", t.dataset.tab===name));
     document.getElementById("view-timeline").classList.toggle("hidden", name!=="timeline");
@@ -594,18 +758,29 @@
   }
   document.querySelectorAll(".tab").forEach(t=> t.addEventListener("click", ()=>setTab(t.dataset.tab)));
 
-  // filters events
+  // =========================
+  // UI events
+  // =========================
   ["q","type","city","status"].forEach(id=>{
     const el = document.getElementById(id);
     el.addEventListener("input", renderAll);
     el.addEventListener("change", renderAll);
   });
 
-  // start
-  load().catch(err=>{
-    document.getElementById("sourceMeta").textContent = "Errore: " + err.message;
-    console.error(err);
+  document.getElementById("btnReload").addEventListener("click", ()=> load().catch(showErr));
+  document.getElementById("btnClearGeo").addEventListener("click", ()=>{
+    localStorage.removeItem(geocodeCacheKey);
+    alert("Cache mappa svuotata.");
+    renderMap(applyFilters(rows));
   });
+
+  function showErr(err){
+    console.error(err);
+    document.getElementById("sourceMeta").textContent = "Errore: " + (err?.message || err);
+  }
+
+  // start
+  load().catch(showErr);
 </script>
 </body>
 </html>
