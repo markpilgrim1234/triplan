@@ -3,19 +3,20 @@ const CSV_URL =
 
 const HEADER_ALIASES = {
   inc: ["inc", "index", "#", "id"],
-  days: ["n days", "n. days", "days", "giorni", "durata"],
+  days: ["n days", "n. days", "days", "giorni", "durata", "weekday", "giorno settimana"],
   date: ["data", "date", "giorno"],
   activity: ["attività", "attivita", "activity", "tipo", "type"],
   from: ["partenza", "da", "from", "start", "origine", "departure"],
   to: ["arrivo", "a", "to", "end", "destinazione", "arrival"],
-  place: ["luogo", "citta", "città", "city", "location", "tappa", "stop"],
+  place: ["luogo", "citta", "città", "city", "location", "tappa", "stop", "notte"],
   km: ["km", "kms", "distanza", "distance"],
-  lodging: ["pernottamento", "hotel", "alloggio", "accommodation", "lodging"],
+  lodging: ["pernottamento", "hotel", "alloggio", "accommodation", "lodging", "nome"],
   status: ["stato", "status", "prenotazione", "booking status"],
   cost: ["costo", "cost", "prezzo", "price", "budget"],
   notes: ["note", "notes", "commenti", "comment", "memo"],
   address: ["indirizzo", "address", "location address", "place address"],
-  link: ["link", "url", "booking link", "website"]
+  link: ["link", "url", "booking link", "website"],
+  cancel: ["cancellazione", "cancellation", "free cancellation"]
 };
 
 let rows = [];
@@ -70,11 +71,42 @@ function keyifyHeader(s) {
     .trim();
 }
 
+const IT_MONTHS = {
+  gennaio: 1,
+  febbraio: 2,
+  marzo: 3,
+  aprile: 4,
+  maggio: 5,
+  giugno: 6,
+  luglio: 7,
+  agosto: 8,
+  settembre: 9,
+  ottobre: 10,
+  novembre: 11,
+  dicembre: 12
+};
+
+function parseDateFlexible(v) {
+  const value = norm(v);
+  if (!value) return "";
+
+  const slash = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}`;
+
+  const clean = stripDiacritics(value.toLowerCase()).replace(/\s+/g, " ").trim();
+  const longIt = clean.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
+  if (longIt) {
+    const month = IT_MONTHS[longIt[2]];
+    if (month) return `${longIt[3]}-${String(month).padStart(2, "0")}-${longIt[1].padStart(2, "0")}`;
+  }
+
+  const fallback = new Date(value);
+  if (!Number.isNaN(fallback.getTime())) return fallback.toISOString().slice(0, 10);
+  return "";
+}
+
 function toISO(ddmmyyyy) {
-  const v = norm(ddmmyyyy);
-  const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return "";
-  return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return parseDateFlexible(ddmmyyyy);
 }
 
 function fmtIT(iso) {
@@ -235,7 +267,8 @@ async function load() {
       cost: getCell(r, idx, "cost"),
       notes: getCell(r, idx, "notes"),
       address: getCell(r, idx, "address"),
-      link: getCell(r, idx, "link")
+      link: getCell(r, idx, "link"),
+      cancel: getCell(r, idx, "cancel")
     };
 
     obj._dateISO = toISO(obj.date);
@@ -481,42 +514,32 @@ function renderCitySummary(data) {
 
 function renderBookings(data) {
   const out = document.getElementById("bookings");
-  const nights = data.filter((r) => norm(r.activity) === "Notte");
-  if (!nights.length) {
+  const bookings = data
+    .filter((r) => norm(r.activity) === "Notte" || norm(r.lodging) || norm(r.address) || normalizeHttpUrl(r.link))
+    .sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+
+  if (!bookings.length) {
     out.innerHTML = '<div class="meta">Nessuna notte con questi filtri.</div>';
     return;
   }
 
-  const byCity = new Map();
-  nights.forEach((r) => {
-    const c = norm(r._city) || "—";
-    if (!byCity.has(c)) byCity.set(c, []);
-    byCity.get(c).push(r);
-  });
+  let html = `<table>
+    <thead><tr>
+      <th>Data</th><th>Città</th><th>Hotel / Nome</th><th>Stato</th><th>Cancellazione</th><th>Link / Note</th>
+    </tr></thead><tbody>`;
 
-  let html = "";
-  for (const [city, items] of [...byCity.entries()].sort((a, b) => a[0].localeCompare(b[0], "it"))) {
-    html += `<h3 style="margin:10px 0 6px; font-size:16px;">${escapeHTML(city)} <span class="meta">(${items.length} notti)</span></h3>`;
-    html += `<table>
-      <thead><tr>
-        <th>Data</th><th>Hotel</th><th>Stato</th><th>Costo</th><th>Link / Note</th>
-      </tr></thead><tbody>`;
-
-    for (const r of items.sort((a, b) => a._dateISO.localeCompare(b._dateISO))) {
-      const linkHtml = safeLinkHtml(r.link, "apri") || "—";
-      html += `<tr>
-        <td>${escapeHTML(fmtIT(r._dateISO))}</td>
-        <td>${escapeHTML(norm(r.lodging) || "—")}</td>
-        <td>${escapeHTML(norm(r.status) || "—")}</td>
-        <td>${r._cost ? escapeHTML(r._cost.toLocaleString("it-IT")) : "—"}</td>
-        <td>
-          ${linkHtml}
-          ${norm(r.notes) ? `<div class="rowMini">📝 ${escapeHTML(norm(r.notes))}</div>` : ""}
-        </td>
-      </tr>`;
-    }
-    html += "</tbody></table>";
+  for (const r of bookings) {
+    const linkHtml = safeLinkHtml(r.link, "apri") || "—";
+    html += `<tr>
+      <td>${escapeHTML(fmtIT(r._dateISO))}</td>
+      <td>${escapeHTML(norm(r.place) || norm(r.to) || norm(r.from) || "—")}</td>
+      <td>${escapeHTML(norm(r.lodging) || "—")}${norm(r.address) ? `<div class="rowMini">📍 ${escapeHTML(norm(r.address))}</div>` : ""}</td>
+      <td>${escapeHTML(norm(r.status) || "—")}</td>
+      <td>${escapeHTML(norm(r.cancel) || "—")}</td>
+      <td>${linkHtml}${norm(r.notes) ? `<div class="rowMini">📝 ${escapeHTML(norm(r.notes))}</div>` : ""}</td>
+    </tr>`;
   }
+  html += "</tbody></table>";
 
   out.innerHTML = html;
 }
@@ -547,13 +570,26 @@ function buildRouteStops(data) {
 
 function buildNightStops(data) {
   const stops = new Map();
-  data.filter((r) => norm(r.activity) === "Notte").forEach((r, i) => {
-    const label = norm(r.place) || norm(r.to) || norm(r.from) || `Pernottamento ${i + 1}`;
+  data.forEach((r, i) => {
+    const act = norm(r.activity);
+    const nightCity = norm(r.place) || norm(r.to) || norm(r.from);
+    const looksLikeNight = act === "Notte" || !!nightCity || !!norm(r.lodging);
+    if (!looksLikeNight) return;
+
+    const label = nightCity || `Pernottamento ${i + 1}`;
     const addr = norm(r.address);
     if (!addr) return;
     const key = `${label}__${addr}`;
     if (!stops.has(key)) {
-      stops.set(key, { label, addr, date: r._dateISO, hotel: norm(r.lodging) });
+      stops.set(key, {
+        label,
+        addr,
+        date: r._dateISO,
+        hotel: norm(r.lodging),
+        status: norm(r.status),
+        cancel: norm(r.cancel),
+        link: norm(r.link)
+      });
     }
   });
   return stops;
@@ -617,7 +653,7 @@ async function renderNightMap(data) {
     const hit = await geocodeNominatim(stop.addr);
     if (!hit) continue;
     const mk = L.marker([hit.lat, hit.lng]).bindPopup(
-      `<strong>${escapeHTML(stop.label)}</strong><br/>${escapeHTML(stop.addr)}${stop.hotel ? `<br/>🏨 ${escapeHTML(stop.hotel)}` : ""}${stop.date ? `<br/>📅 ${escapeHTML(fmtIT(stop.date))}` : ""}`
+      `<strong>${escapeHTML(stop.label)}</strong><br/>${escapeHTML(stop.addr)}${stop.hotel ? `<br/>🏨 ${escapeHTML(stop.hotel)}` : ""}${stop.status ? `<br/>📌 ${escapeHTML(stop.status)}` : ""}${stop.cancel ? `<br/>🗓️ Canc.: ${escapeHTML(stop.cancel)}` : ""}${stop.link ? `<br/>🔗 ${safeLinkHtml(stop.link, "apri")}` : ""}${stop.date ? `<br/>📅 ${escapeHTML(fmtIT(stop.date))}` : ""}`
     );
     mk.addTo(mapLayerGroup);
     markers.push(mk);
@@ -635,7 +671,7 @@ function fitMap(markers, lines, successMeta) {
   } else {
     const fallbackMeta = activeMapMode === "route"
       ? "Nessuna tappa geocodificata. Controlla Partenza/Arrivo/Luogo con nomi più completi."
-      : "Nessun pernottamento geocodificato. Verifica la colonna Indirizzo nelle righe Notte.";
+      : "Nessun pernottamento geocodificato. Verifica la colonna Indirizzo (con eventuale Notte/Nome).";
     document.getElementById("mapMeta").textContent = fallbackMeta;
     map.setView([41.9, 12.5], 5);
   }

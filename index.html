@@ -83,8 +83,8 @@
         <div class="bd">
           <div id="map"></div>
           <div class="meta" style="margin-top:10px;">
-            Rotta usa le colonne <code>Partenza</code>, <code>Arrivo</code> e <code>Luogo</code>.
-            Pernottamenti usa la colonna <code>Indirizzo</code> nelle righe di tipo <code>Notte</code>.
+            Rotta usa le colonne <code>Partenza</code>, <code>Arrivo</code> e <code>Luogo/Notte</code>.
+            Pernottamenti usa <code>Indirizzo</code> con priorità alle righe con dati di pernottamento.
           </div>
         </div>
       </div>
@@ -93,7 +93,7 @@
     <div id="view-bookings" class="hidden">
       <div class="panel">
         <div class="hd">
-          <h2>Prenotazioni (solo Notti)</h2>
+          <h2>Prenotazioni (ordinate per data)</h2>
           <div class="meta">hotel · link · stato · costo</div>
         </div>
         <div class="bd" id="bookings"></div>
