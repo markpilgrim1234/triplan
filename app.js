@@ -294,11 +294,13 @@
   function renderDashboard() {
     const data = state.filtered;
     const trips = data.filter((r) => r._kind === "trip").sort((a, b) => a._dateISO.localeCompare(b._dateISO));
-    const nights = data.filter(isNightLike).sort((a, b) => a._dateISO.localeCompare(b._dateISO));
 
     const longTrips = trips.filter((r) => r._km >= 500).length;
-    const missingAddresses = nights.filter((r) => !norm(r.address)).length;
-    const booked = nights.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
+    const nightCandidates = data
+      .filter((r) => bookingPlace(r) !== "—")
+      .sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+    const missingAddresses = nightCandidates.filter((r) => !norm(r.address)).length;
+    const booked = nightCandidates.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
 
     els.healthBoard.innerHTML = `
       <div class="healthWrap">
@@ -307,22 +309,63 @@
         <article class="metric"><h4>Prenotazioni confermate</h4><p>${booked}</p></article>
       </div>`;
 
-    if (!state.selectedActivityId || !nights.some((a) => a.id === state.selectedActivityId)) {
-      state.selectedActivityId = nights[0]?.id || null;
-    }
-
-    els.activitiesMeta.textContent = `${trips.length} trip · ${nights.length} pernottamenti`;
-
-    const allActivities = [...trips, ...nights];
     const byDate = new Map();
-    for (const r of allActivities) {
-      if (!byDate.has(r._dateISO)) byDate.set(r._dateISO, { trips: [], nights: [] });
-      const bucket = byDate.get(r._dateISO);
-      if (r._kind === "trip") bucket.trips.push(r);
-      else bucket.nights.push(r);
+    for (const r of data) {
+      if (!byDate.has(r._dateISO)) byDate.set(r._dateISO, []);
+      byDate.get(r._dateISO).push(r);
     }
+
+    const pickNightRow = (rows) => {
+      if (!rows?.length) return null;
+      const withNightSignal = rows.filter((r) => bookingPlace(r) !== "—");
+      if (!withNightSignal.length) return null;
+
+      const strong = withNightSignal.find((r) => r._activity === "notte" || norm(r.lodging) || norm(r.address) || norm(r.status));
+      return strong || withNightSignal[0];
+    };
 
     const dates = [...byDate.keys()].sort();
+    const calendarRows = dates.map((date) => {
+      const rows = byDate.get(date);
+      const trip = rows.find((r) => r._kind === "trip") || null;
+      const night = pickNightRow(rows);
+      return { date, trip, night };
+    });
+
+    const groupMeta = new Map();
+    const nightKey = (r) => bookingPlace(r);
+    let i = 0;
+    while (i < calendarRows.length) {
+      const current = calendarRows[i].night;
+      if (!current) {
+        i += 1;
+        continue;
+      }
+
+      const key = nightKey(current);
+      let j = i + 1;
+      while (j < calendarRows.length) {
+        const nextNight = calendarRows[j].night;
+        if (!nextNight) break;
+        if (nightKey(nextNight) !== key) break;
+        j += 1;
+      }
+
+      groupMeta.set(i, { rowSpan: j - i, row: current });
+      for (let k = i + 1; k < j; k += 1) {
+        groupMeta.set(k, { skip: true });
+      }
+      i = j;
+    }
+
+    const selectableNights = [...groupMeta.values()]
+      .filter((m) => m.row && !m.skip)
+      .map((m) => m.row);
+    if (!state.selectedActivityId || !selectableNights.some((a) => a.id === state.selectedActivityId)) {
+      state.selectedActivityId = selectableNights[0]?.id || null;
+    }
+
+    els.activitiesMeta.textContent = `${trips.length} trip · ${selectableNights.length} pernottamenti`;
 
     const renderTripCell = (r) => `
       <article class="activityRow tripRow">
@@ -331,30 +374,41 @@
         <div class="inlineMeta">${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}</div>
       </article>`;
 
-    const renderNightCell = (r) => `
-      <article class="activityRow clickable ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
+    const renderNightGroup = (r) => `
+      <article class="activityRow clickable nightGroup ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
         <div class="top"><span>Pernottamento</span><span>${esc(fmtIT(r._dateISO))}</span></div>
         <div class="route">${esc(bookingPlace(r))}</div>
         <div class="inlineMeta">${norm(r.lodging) ? `<span class="pill">🏨 ${esc(norm(r.lodging))}</span>` : ""}${norm(r.status) ? `<span class="pill">${esc(norm(r.status))}</span>` : ""}</div>
       </article>`;
 
-    const rows = dates.map((date) => {
-      const day = byDate.get(date);
-      const tripCell = day.trips[0] ? renderTripCell(day.trips[0]) : '<div class="cellEmpty">—</div>';
-      const nightCell = day.nights[0] ? renderNightCell(day.nights[0]) : '<div class="cellEmpty">—</div>';
+    const rows = calendarRows.map((day, idx) => {
+      const tripCell = day.trip ? renderTripCell(day.trip) : '<div class="cellEmpty">—</div>';
+      const meta = groupMeta.get(idx);
+
+      let nightTd = "";
+      if (meta?.skip) {
+        nightTd = "";
+      } else if (meta?.row) {
+        nightTd = `<td class="nightCellWrap" rowspan="${meta.rowSpan}">${renderNightGroup(meta.row)}</td>`;
+      } else {
+        nightTd = '<td><div class="cellEmpty">—</div></td>';
+      }
+
       return `
-        <div class="calendarRow">
-          <div class="dateCell">${esc(fmtIT(date))}</div>
-          <div>${tripCell}</div>
-          <div>${nightCell}</div>
-        </div>`;
+        <tr>
+          <td class="dateCell">${esc(fmtIT(day.date))}</td>
+          <td>${tripCell}</td>
+          ${nightTd}
+        </tr>`;
     }).join("");
 
     els.nextActivities.innerHTML = dates.length
       ? `
       <div class="activityBoard">
-        <div class="calendarHead"><div>Data</div><div>Trip</div><div>Pernottamento</div></div>
-        ${rows}
+        <table class="activityTable">
+          <thead><tr><th>Data</th><th>Trip</th><th>Pernottamento</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
       </div>`
       : '<div class="emptyState">Nessuna attività disponibile</div>';
 
@@ -365,7 +419,7 @@
       });
     });
 
-    const selected = nights.find((a) => a.id === state.selectedActivityId);
+    const selected = selectableNights.find((a) => a.id === state.selectedActivityId);
     renderActivityDetail(selected);
   }
 

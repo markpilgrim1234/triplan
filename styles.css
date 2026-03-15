@@ -68,16 +68,14 @@ input::placeholder{color:#94a3b8}
 .metric h4{margin:0;font-size:12px;color:var(--muted)}
 .metric p{margin:6px 0 0;font-size:20px;font-weight:800}
 
-.activityBoard{display:grid;gap:8px}
-.calendarHead,.calendarRow{display:grid;grid-template-columns:160px 1fr 1fr;gap:8px;align-items:stretch}
-.calendarHead{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-@media (max-width:900px){
-  .calendarHead{display:none}
-  .calendarRow{grid-template-columns:1fr;gap:6px}
-}
-.dateCell{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;font-size:12px;color:var(--muted);display:grid;align-content:center}
-.cellEmpty{border:1px dashed var(--line);border-radius:10px;padding:10px;color:var(--muted);font-size:12px;background:#fff;display:grid;place-items:center;text-align:center}
-.activityRow{display:grid;gap:5px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#f8fbff}
+.activityBoard{display:grid;gap:8px;overflow:auto}
+.activityTable{width:100%;border-collapse:separate;border-spacing:8px 8px;table-layout:fixed}
+.activityTable th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:2px 4px}
+.activityTable td{vertical-align:top;padding:0}
+.activityTable .dateCell{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;font-size:12px;color:var(--muted);height:100%;display:grid;align-content:center;min-height:98px}
+.nightCellWrap{min-width:280px}
+.cellEmpty{border:1px dashed var(--line);border-radius:10px;padding:10px;color:var(--muted);font-size:12px;background:#fff;display:grid;place-items:center;text-align:center;min-height:98px}
+.activityRow{display:grid;gap:5px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#f8fbff;min-height:98px}
 .activityRow.clickable{cursor:pointer}
 .activityRow.clickable.active{border-color:var(--accent);box-shadow:0 0 0 2px #6fa8ff33 inset}
 .activityRow .top{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
@@ -100,3 +98,12 @@ input::placeholder{color:#94a3b8}
 
 .link{color:#0d8f76;text-decoration:none;border-bottom:1px dashed #56b8a4}
 .error{border:1px solid #ff9898;background:#fff1f1;color:#991b1b;border-radius:10px;padding:8px}
+
+@media (max-width:980px){
+  .activityTable{border-spacing:6px 6px}
+  .activityTable th{display:none}
+  .activityTable,.activityTable tbody,.activityTable tr,.activityTable td{display:block;width:100%}
+  .activityTable tr{display:grid;gap:6px;margin-bottom:6px}
+  .activityTable .dateCell,.activityRow,.cellEmpty{min-height:unset}
+  .nightCellWrap{min-width:0}
+}
