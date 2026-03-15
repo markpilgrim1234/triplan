@@ -313,6 +313,7 @@
 
     els.activitiesMeta.textContent = `${trips.length} trip · ${nights.length} pernottamenti`;
 
+    const allActivities = [...trips, ...nights];
     const byDate = new Map();
     for (const r of allActivities) {
       if (!byDate.has(r._dateISO)) byDate.set(r._dateISO, { trips: [], nights: [] });
