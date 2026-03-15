@@ -32,15 +32,15 @@
   const state = {
     rows: [],
     filtered: [],
-    selectedActivityId: null,
-    tab: "dashboard",
+    tab: "trip",
     mapMode: "route",
     mapReady: false,
     map: null,
     routeLayer: null,
     nightLayer: null,
     focusLayer: null,
-    lastGeocodeAt: 0
+    lastGeocodeAt: 0,
+    selectedNightId: null
   };
 
   const els = {
@@ -54,16 +54,21 @@
     kNights: document.getElementById("kNights"),
     kKm: document.getElementById("kKm"),
     kCost: document.getElementById("kCost"),
+    kBooked: document.getElementById("kBooked"),
     metaCount: document.getElementById("metaCount"),
-    healthBoard: document.getElementById("healthBoard"),
-    nextActivities: document.getElementById("nextActivities"),
-    activitiesMeta: document.getElementById("activitiesMeta"),
-    activityDetail: document.getElementById("activityDetail"),
+    tripList: document.getElementById("tripList"),
+    tripMeta: document.getElementById("tripMeta"),
+    nightList: document.getElementById("nightList"),
+    nightMeta: document.getElementById("nightMeta"),
     mapMeta: document.getElementById("mapMeta"),
-    viewDashboard: document.getElementById("view-dashboard"),
+    viewTrip: document.getElementById("view-trip"),
+    viewNight: document.getElementById("view-night"),
     viewMap: document.getElementById("view-map"),
     btnReload: document.getElementById("btnReload"),
-    btnClearGeo: document.getElementById("btnClearGeo")
+    btnClearGeo: document.getElementById("btnClearGeo"),
+    nightModal: document.getElementById("nightModal"),
+    nightModalBody: document.getElementById("nightModalBody"),
+    btnCloseModal: document.getElementById("btnCloseModal")
   };
 
   const norm = (s) => String(s ?? "").trim();
@@ -117,11 +122,11 @@
     let row = [];
     let cell = "";
     let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
+    for (let i = 0; i < text.length; i += 1) {
       const c = text[i];
       const n = text[i + 1];
       if (c === '"') {
-        if (inQuotes && n === '"') { cell += '"'; i++; } else inQuotes = !inQuotes;
+        if (inQuotes && n === '"') { cell += '"'; i += 1; } else inQuotes = !inQuotes;
       } else if (!inQuotes && (c === "," || c === "\n" || c === "\r")) {
         if (c === ",") { row.push(cell); cell = ""; }
         else {
@@ -129,7 +134,7 @@
           if (row.some((x) => norm(x))) out.push(row);
           row = [];
           cell = "";
-          if (c === "\r" && n === "\n") i++;
+          if (c === "\r" && n === "\n") i += 1;
         }
       } else {
         cell += c;
@@ -161,6 +166,10 @@
     return norm(r.place) || norm(r.to) || norm(r.from) || "—";
   }
 
+  function isNightLike(r) {
+    return r._activity === "notte" || !!(norm(r.lodging) || norm(r.address) || normalizeHttpUrl(r.link) || normalizeHttpUrl(r.mapsLink) || norm(r.status));
+  }
+
   function normalizeRow(raw, idx, i) {
     const row = {
       id: `row-${i + 1}`,
@@ -179,6 +188,7 @@
       notes: getCell(raw, idx, "notes"),
       cancel: getCell(raw, idx, "cancel")
     };
+
     row._dateISO = parseDateFlexible(row.date);
     row._km = safeNum(row.km);
     row._cost = safeNum(row.cost);
@@ -188,10 +198,6 @@
     row._kind = row._activity === "trip" ? "trip" : "night";
     row._title = row._kind === "trip" ? `${norm(row.from) || "—"} → ${norm(row.to) || "—"}` : bookingPlace(row);
     return row;
-  }
-
-  function isNightLike(r) {
-    return r._activity === "notte" || !!(norm(r.lodging) || norm(r.address) || normalizeHttpUrl(r.link) || normalizeHttpUrl(r.mapsLink) || norm(r.status));
   }
 
   async function fetchFirstAvailableCsv() {
@@ -213,12 +219,12 @@
   async function loadData() {
     els.sourceMeta.textContent = "Carico dati...";
     const { matrix, sourceUrl } = await fetchFirstAvailableCsv();
-
     const idx = buildHeaderIndex(matrix[0]);
     if (idx.date < 0) throw new Error("Colonna data non trovata");
 
     state.rows = matrix.slice(1).map((r, i) => normalizeRow(r, idx, i)).filter((r) => r._dateISO);
-    state.rows.sort((a, b) => a._dateISO.localeCompare(b._dateISO) || (a._activity === "trip" ? -1 : 1));
+    state.rows.sort((a, b) => a._dateISO.localeCompare(b._dateISO) || (a._kind === "trip" ? -1 : 1));
+
     rebuildFilterOptions();
     renderAll();
 
@@ -275,7 +281,8 @@
   function renderAll() {
     state.filtered = applyFilters(state.rows);
     renderKPIs();
-    renderDashboard();
+    renderTrips();
+    renderNights();
     if (state.tab === "map") void renderMap();
     els.metaCount.textContent = `${state.filtered.length} elementi filtrati`;
   }
@@ -284,163 +291,80 @@
     const data = state.filtered;
     els.kDays.textContent = new Set(data.map((r) => r._dateISO)).size || "—";
     els.kTrips.textContent = data.filter((r) => r._kind === "trip").length || "—";
-    els.kNights.textContent = data.filter(isNightLike).length || "—";
+    const nights = data.filter(isNightLike);
+    els.kNights.textContent = nights.length || "—";
     const km = data.reduce((s, r) => s + r._km, 0);
     const cost = data.reduce((s, r) => s + r._cost, 0);
+    const booked = nights.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
     els.kKm.textContent = km ? km.toLocaleString("it-IT") : "—";
     els.kCost.textContent = cost ? cost.toLocaleString("it-IT") : "—";
+    els.kBooked.textContent = booked || "—";
   }
 
-  function renderDashboard() {
-    const data = state.filtered;
-    const trips = data.filter((r) => r._kind === "trip").sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+  function renderTrips() {
+    const trips = state.filtered.filter((r) => r._kind === "trip").sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+    els.tripMeta.textContent = `${trips.length} tratte`;
+    els.tripList.innerHTML = trips.length
+      ? trips.map((r) => `
+        <article class="activityRow tripRow">
+          <div class="top"><span>${esc(fmtIT(r._dateISO))}</span>${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}</div>
+          <div class="route">${esc(`${norm(r.from) || "—"} → ${norm(r.to) || "—"}`)}</div>
+          <div class="inlineMeta">${norm(r.place) ? `<span class="pill">Notte: ${esc(norm(r.place))}</span>` : ""}</div>
+        </article>
+      `).join("")
+      : '<div class="emptyState">Nessun trip con i filtri attuali.</div>';
+  }
 
-    const longTrips = trips.filter((r) => r._km >= 500).length;
-    const nightCandidates = data
-      .filter((r) => bookingPlace(r) !== "—")
-      .sort((a, b) => a._dateISO.localeCompare(b._dateISO));
-    const missingAddresses = nightCandidates.filter((r) => !norm(r.address)).length;
-    const booked = nightCandidates.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
-
-    els.healthBoard.innerHTML = `
-      <div class="healthWrap">
-        <article class="metric"><h4>Trip lunghi</h4><p>${longTrips}</p></article>
-        <article class="metric"><h4>Pernotti senza indirizzo</h4><p>${missingAddresses}</p></article>
-        <article class="metric"><h4>Prenotazioni confermate</h4><p>${booked}</p></article>
-      </div>`;
-
-    const byDate = new Map();
-    for (const r of data) {
-      if (!byDate.has(r._dateISO)) byDate.set(r._dateISO, []);
-      byDate.get(r._dateISO).push(r);
-    }
-
-    const pickNightRow = (rows) => {
-      if (!rows?.length) return null;
-      const withNightSignal = rows.filter((r) => bookingPlace(r) !== "—");
-      if (!withNightSignal.length) return null;
-
-      const strong = withNightSignal.find((r) => r._activity === "notte" || norm(r.lodging) || norm(r.address) || norm(r.status));
-      return strong || withNightSignal[0];
-    };
-
-    const dates = [...byDate.keys()].sort();
-    const calendarRows = dates.map((date) => {
-      const rows = byDate.get(date);
-      const trip = rows.find((r) => r._kind === "trip") || null;
-      const night = pickNightRow(rows);
-      return { date, trip, night };
-    });
-
-    const groupMeta = new Map();
-    const nightKey = (r) => bookingPlace(r);
-    let i = 0;
-    while (i < calendarRows.length) {
-      const current = calendarRows[i].night;
-      if (!current) {
-        i += 1;
-        continue;
-      }
-
-      const key = nightKey(current);
-      let j = i + 1;
-      while (j < calendarRows.length) {
-        const nextNight = calendarRows[j].night;
-        if (!nextNight) break;
-        if (nightKey(nextNight) !== key) break;
-        j += 1;
-      }
-
-      groupMeta.set(i, { rowSpan: j - i, row: current });
-      for (let k = i + 1; k < j; k += 1) {
-        groupMeta.set(k, { skip: true });
-      }
-      i = j;
-    }
-
-    const selectableNights = [...groupMeta.values()]
-      .filter((m) => m.row && !m.skip)
-      .map((m) => m.row);
-    if (!state.selectedActivityId || !selectableNights.some((a) => a.id === state.selectedActivityId)) {
-      state.selectedActivityId = selectableNights[0]?.id || null;
-    }
-
-    els.activitiesMeta.textContent = `${trips.length} trip · ${selectableNights.length} pernottamenti`;
-
-    const renderTripCell = (r) => `
-      <article class="activityRow tripRow">
-        <div class="top"><span>Trip</span><span>${esc(fmtIT(r._dateISO))}</span></div>
-        <div class="route">${esc(`${norm(r.from) || "—"} → ${norm(r.to) || "—"}`)}</div>
-        <div class="inlineMeta">${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}</div>
-      </article>`;
-
-    const renderNightGroup = (r) => `
-      <article class="activityRow clickable nightGroup ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
-        <div class="top"><span>Pernottamento</span><span>${esc(fmtIT(r._dateISO))}</span></div>
-        <div class="route">${esc(bookingPlace(r))}</div>
-        <div class="inlineMeta">${norm(r.lodging) ? `<span class="pill">🏨 ${esc(norm(r.lodging))}</span>` : ""}${norm(r.status) ? `<span class="pill">${esc(norm(r.status))}</span>` : ""}</div>
-      </article>`;
-
-    const rows = calendarRows.map((day, idx) => {
-      const tripCell = day.trip ? renderTripCell(day.trip) : '<div class="cellEmpty">—</div>';
-      const meta = groupMeta.get(idx);
-
-      let nightTd = "";
-      if (meta?.skip) {
-        nightTd = "";
-      } else if (meta?.row) {
-        nightTd = `<td class="nightCellWrap" rowspan="${meta.rowSpan}">${renderNightGroup(meta.row)}</td>`;
+  function renderNights() {
+    const nights = state.filtered.filter(isNightLike).sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+    const groups = [];
+    for (const row of nights) {
+      const key = bookingPlace(row);
+      const prev = groups[groups.length - 1];
+      if (prev && prev.key === key) {
+        prev.end = row._dateISO;
+        if (!prev.row.lodging && row.lodging) prev.row = row;
+        prev.rows.push(row);
       } else {
-        nightTd = '<td><div class="cellEmpty">—</div></td>';
+        groups.push({ key, start: row._dateISO, end: row._dateISO, row, rows: [row] });
       }
+    }
 
-      return `
-        <tr>
-          <td class="dateCell">${esc(fmtIT(day.date))}</td>
-          <td>${tripCell}</td>
-          ${nightTd}
-        </tr>`;
-    }).join("");
+    if (!state.selectedNightId || !groups.some((g) => g.row.id === state.selectedNightId)) {
+      state.selectedNightId = groups[0]?.row.id || null;
+    }
 
-    els.nextActivities.innerHTML = dates.length
-      ? `
-      <div class="activityBoard">
-        <table class="activityTable">
-          <thead><tr><th>Data</th><th>Trip</th><th>Pernottamento</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`
-      : '<div class="emptyState">Nessuna attività disponibile</div>';
+    els.nightMeta.textContent = `${groups.length} pernottamenti`;
+    els.nightList.innerHTML = groups.length
+      ? groups.map((g) => `
+        <article class="activityRow clickable ${g.row.id === state.selectedNightId ? "active" : ""}" data-night-id="${esc(g.row.id)}">
+          <div class="top"><span>${esc(g.start === g.end ? fmtIT(g.start) : `${fmtIT(g.start)} → ${fmtIT(g.end)}`)}</span><span>${g.rows.length}gg</span></div>
+          <div class="route">${esc(g.key)}</div>
+          <div class="inlineMeta">${norm(g.row.lodging) ? `<span class="pill">🏨 ${esc(norm(g.row.lodging))}</span>` : ""}${norm(g.row.status) ? `<span class="pill">${esc(norm(g.row.status))}</span>` : ""}</div>
+        </article>
+      `).join("")
+      : '<div class="emptyState">Nessun pernottamento con i filtri attuali.</div>';
 
-    els.nextActivities.querySelectorAll(".activityRow.clickable[data-activity-id]").forEach((node) => {
+    els.nightList.querySelectorAll("[data-night-id]").forEach((node) => {
       node.addEventListener("click", () => {
-        state.selectedActivityId = node.getAttribute("data-activity-id");
-        renderDashboard();
+        const row = groups.find((g) => g.row.id === node.getAttribute("data-night-id"))?.row;
+        state.selectedNightId = row?.id || null;
+        renderNights();
+        if (row) openNightModal(row);
       });
     });
-
-    const selected = selectableNights.find((a) => a.id === state.selectedActivityId);
-    renderActivityDetail(selected);
   }
 
-  function renderActivityDetail(row) {
-    if (!row) {
-      els.activityDetail.innerHTML = '<div class="emptyState">Seleziona una riga (Trip o Pernottamento) per vedere i dettagli.</div>';
-      return;
-    }
-
+  function openNightModal(row) {
     const mapsUrl = normalizeHttpUrl(row.mapsLink) || (norm(row.address) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(norm(row.address))}` : "");
-
-    els.activityDetail.innerHTML = `
-      <h3>${esc(norm(row.lodging) || row._title)}</h3>
+    els.nightModalBody.innerHTML = `
+      <h3>${esc(norm(row.lodging) || bookingPlace(row))}</h3>
       <div class="detailGrid">
         <div class="k">Data</div><div>${esc(fmtIT(row._dateISO))}</div>
-        <div class="k">Tipo</div><div>${esc(row.activity || "—")}</div>
-        <div class="k">Percorso / Luogo</div><div>${esc(row._title)}</div>
+        <div class="k">Città pernottamento</div><div>${esc(bookingPlace(row))}</div>
         <div class="k">Hotel</div><div>${esc(norm(row.lodging) || "—")}</div>
         <div class="k">Indirizzo</div><div>${esc(norm(row.address) || "—")}</div>
         <div class="k">Stato</div><div>${esc(norm(row.status) || "—")}</div>
-        <div class="k">Km</div><div>${row._km ? esc(row._km.toLocaleString("it-IT")) : "—"}</div>
         <div class="k">Costo</div><div>${row._cost ? esc(row._cost.toLocaleString("it-IT")) : "—"}</div>
         <div class="k">Cancellazione</div><div>${esc(norm(row.cancel) || "—")}</div>
         <div class="k">Link conferma</div><div>${linkHtml(row.link, "Apri link conferma") || "—"}</div>
@@ -448,11 +372,19 @@
         <div class="k">Note</div><div>${esc(norm(row.notes) || "—")}</div>
       </div>
       <div class="actions">
-        <button class="actionBtn" id="btnFocusActivityMap">Mostra su mappa</button>
+        <button class="actionBtn" id="btnFocusNightMap">Mostra su mappa</button>
       </div>
     `;
+    document.getElementById("btnFocusNightMap")?.addEventListener("click", () => {
+      closeNightModal();
+      void focusActivityOnMap(row);
+    });
+    els.nightModal.classList.remove("hidden");
+  }
 
-    document.getElementById("btnFocusActivityMap")?.addEventListener("click", () => void focusActivityOnMap(row));
+  function closeNightModal() {
+    els.nightModal.classList.add("hidden");
+    els.nightModalBody.innerHTML = "";
   }
 
   function loadCache() {
@@ -571,7 +503,6 @@
   }
 
   async function renderMap() {
-    if (state.tab !== "map" && !state.mapReady) return;
     initMap();
     clearMapLayers();
     if (state.mapMode === "route") await renderRouteMap(state.filtered);
@@ -580,24 +511,25 @@
 
   async function focusActivityOnMap(row) {
     setTab("map");
-    setMapMode(isNightLike(row) ? "night" : "route");
+    setMapMode("night");
     const query = norm(row.address) || bookingPlace(row);
     const hit = await geocodeWithCache(query);
     if (!hit) {
-      els.mapMeta.textContent = "Impossibile geocodificare questa attività";
+      els.mapMeta.textContent = "Impossibile geocodificare questo pernottamento";
       return;
     }
     state.focusLayer.clearLayers();
-    const mk = L.marker([hit.lat, hit.lng]).bindPopup(`<strong>${esc(norm(row.lodging) || row._title)}</strong><br>${esc(query)}`);
+    const mk = L.marker([hit.lat, hit.lng]).bindPopup(`<strong>${esc(norm(row.lodging) || bookingPlace(row))}</strong><br>${esc(query)}`);
     mk.addTo(state.focusLayer).openPopup();
     state.map.setView([hit.lat, hit.lng], 12);
-    els.mapMeta.textContent = `Focus su ${row._title}`;
+    els.mapMeta.textContent = `Focus su ${bookingPlace(row)}`;
   }
 
   function setTab(tab) {
     state.tab = tab;
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-    els.viewDashboard.classList.toggle("hidden", tab !== "dashboard");
+    els.viewTrip.classList.toggle("hidden", tab !== "trip");
+    els.viewNight.classList.toggle("hidden", tab !== "night");
     els.viewMap.classList.toggle("hidden", tab !== "map");
 
     if (tab === "map") {
@@ -643,6 +575,11 @@
       localStorage.removeItem(CACHE_KEY);
       alert("Cache geocoding pulita");
       if (state.tab === "map") void renderMap();
+    });
+
+    els.btnCloseModal.addEventListener("click", closeNightModal);
+    els.nightModal.addEventListener("click", (e) => {
+      if (e.target === els.nightModal) closeNightModal();
     });
   }
 

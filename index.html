@@ -52,37 +52,32 @@
         <article class="kpi"><span class="k">Notti</span><strong id="kNights">—</strong></article>
         <article class="kpi"><span class="k">Km</span><strong id="kKm">—</strong></article>
         <article class="kpi"><span class="k">Costo</span><strong id="kCost">—</strong></article>
+        <article class="kpi"><span class="k">Prenotazioni confermate</span><strong id="kBooked">—</strong></article>
       </section>
     </aside>
 
     <main class="workspace">
       <header class="workspaceHead">
         <nav class="tabs">
-          <button class="tab active" data-tab="dashboard">Dashboard</button>
+          <button class="tab active" data-tab="trip">Trip</button>
+          <button class="tab" data-tab="night">Pernottamenti</button>
           <button class="tab" data-tab="map">Mappa</button>
         </nav>
         <div class="muted" id="metaCount">—</div>
       </header>
 
-      <section id="view-dashboard" class="view">
-        <div class="dashboardGrid">
-          <article class="panel full">
-            <div class="panelHd"><h3>Stato viaggio</h3></div>
-            <div class="panelBd" id="healthBoard"></div>
-          </article>
+      <section id="view-trip" class="view">
+        <article class="panel">
+          <div class="panelHd"><h3>Piano Trip</h3><span class="muted" id="tripMeta">—</span></div>
+          <div class="panelBd stack" id="tripList"></div>
+        </article>
+      </section>
 
-          <article class="panel">
-            <div class="panelHd"><h3>Prossime attività</h3><span class="muted" id="activitiesMeta">—</span></div>
-            <div class="panelBd" id="nextActivities"></div>
-          </article>
-
-          <article class="panel detailPanel">
-            <div class="panelHd"><h3>Dettaglio attività</h3></div>
-            <div class="panelBd" id="activityDetail">
-              <div class="emptyState">Seleziona una riga (Trip o Pernottamento) per vedere i dettagli.</div>
-            </div>
-          </article>
-        </div>
+      <section id="view-night" class="view hidden">
+        <article class="panel">
+          <div class="panelHd"><h3>Pernottamenti</h3><span class="muted" id="nightMeta">—</span></div>
+          <div class="panelBd stack" id="nightList"></div>
+        </article>
       </section>
 
       <section id="view-map" class="view hidden">
@@ -102,6 +97,16 @@
         </article>
       </section>
     </main>
+  </div>
+
+  <div id="nightModal" class="modal hidden" aria-hidden="true">
+    <div class="modalCard" role="dialog" aria-modal="true" aria-label="Dettaglio pernottamento">
+      <div class="modalHd">
+        <h3>Dettaglio pernottamento</h3>
+        <button class="btn ghost" id="btnCloseModal">Chiudi</button>
+      </div>
+      <div class="modalBd" id="nightModalBody"></div>
+    </div>
   </div>
 
   <script src="./app.js"></script>
