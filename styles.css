@@ -1,0 +1,109 @@
+:root {
+  --bg:#f6f8fc;
+  --panel:#ffffffee;
+  --line:#d9e1ee;
+  --text:#182033;
+  --muted:#64748b;
+  --accent:#2f6fec;
+  --accent-2:#35c7a5;
+  --shadow:0 12px 28px rgba(15,23,42,.08);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  color:var(--text);
+  background:radial-gradient(1100px 420px at 10% -10%, #e7efff 0%, transparent 60%),
+             radial-gradient(900px 420px at 90% -20%, #e5fbf5 0%, transparent 60%),
+             var(--bg);
+}
+.fx-bg{position:fixed;inset:0;pointer-events:none;background:radial-gradient(500px 300px at 80% 85%, #7aa2ff2b, transparent 70%)}
+
+.appShell{position:relative;z-index:1;display:grid;grid-template-columns:320px 1fr;gap:16px;max-width:1520px;margin:0 auto;padding:18px}
+@media (max-width:1100px){.appShell{grid-template-columns:1fr}}
+
+.sidebar{display:flex;flex-direction:column;gap:12px}
+.brand{display:flex;gap:12px;align-items:flex-start;padding:8px 6px}
+.logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:900}
+h1{margin:0;font-size:20px}
+.muted{color:var(--muted);font-size:12px}
+
+.sidebarCard,.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(10px);box-shadow:var(--shadow)}
+.sidebarCard{padding:12px}
+.sidebarCard h2{margin:0 0 10px;font-size:14px}
+.btnRow{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border-radius:10px;border:1px solid var(--line);padding:8px 10px;font-size:12px;cursor:pointer;color:var(--text);background:#fff}
+.btn.secondary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-color:transparent;font-weight:700}
+.btn.ghost{background:transparent}
+
+.filters{display:grid;gap:8px}
+input,select{width:100%;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:10px;padding:10px;font-size:13px}
+input::placeholder{color:#94a3b8}
+
+.kpiGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:#f8fbff;border:1px solid #d9e6ff;border-radius:12px;padding:10px;display:grid;gap:4px}
+.kpi .k{font-size:11px;color:var(--muted)}
+.kpi strong{font-size:18px}
+
+.workspace{min-width:0;display:grid;gap:12px}
+.workspaceHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{border:1px solid var(--line);background:#fff;color:var(--text);padding:9px 13px;border-radius:999px;cursor:pointer;font-size:13px}
+.tab.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-color:transparent;font-weight:700}
+
+.view{display:block}
+.hidden{display:none!important}
+.panelHd{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.panelHd h3{margin:0;font-size:15px}
+.panelBd{padding:14px}
+
+.dashboardGrid{display:grid;grid-template-columns:1.1fr .9fr;gap:12px}
+.dashboardGrid .full{grid-column:1/-1}
+@media (max-width:1000px){.dashboardGrid{grid-template-columns:1fr}}
+
+.healthWrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:700px){.healthWrap{grid-template-columns:1fr}}
+.metric{border:1px solid var(--line);background:#f8fbff;border-radius:12px;padding:10px}
+.metric h4{margin:0;font-size:12px;color:var(--muted)}
+.metric p{margin:6px 0 0;font-size:20px;font-weight:800}
+
+.activityBoard{display:grid;gap:8px;overflow:auto}
+.activityTable{width:100%;border-collapse:separate;border-spacing:8px 8px;table-layout:fixed}
+.activityTable th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:2px 4px}
+.activityTable td{vertical-align:top;padding:0}
+.activityTable .dateCell{border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;font-size:12px;color:var(--muted);height:100%;display:grid;align-content:center;min-height:98px}
+.nightCellWrap{min-width:280px}
+.cellEmpty{border:1px dashed var(--line);border-radius:10px;padding:10px;color:var(--muted);font-size:12px;background:#fff;display:grid;place-items:center;text-align:center;min-height:98px}
+.activityRow{display:grid;gap:5px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#f8fbff;min-height:98px}
+.activityRow.clickable{cursor:pointer}
+.activityRow.clickable.active{border-color:var(--accent);box-shadow:0 0 0 2px #6fa8ff33 inset}
+.activityRow .top{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+.route{font-weight:700}
+.inlineMeta{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:11px;padding:3px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#fff}
+
+.detailPanel{position:sticky;top:14px;height:max-content}
+.detailGrid{display:grid;grid-template-columns:120px 1fr;gap:7px 10px;font-size:13px}
+.detailGrid .k{color:var(--muted)}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.actionBtn{border:1px solid transparent;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:700;font-size:12px}
+.emptyState{padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px;background:#fff}
+
+.mapHd{align-items:center}
+.modeSwitch{display:flex;gap:6px}
+.modeBtn{border:1px solid var(--line);background:#fff;color:var(--text);padding:7px 11px;border-radius:999px;cursor:pointer;font-size:12px}
+.modeBtn.active{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-color:transparent;font-weight:700}
+#map{height:62vh;min-height:420px;border-radius:14px;border:1px solid var(--line)}
+
+.link{color:#0d8f76;text-decoration:none;border-bottom:1px dashed #56b8a4}
+.error{border:1px solid #ff9898;background:#fff1f1;color:#991b1b;border-radius:10px;padding:8px}
+
+@media (max-width:980px){
+  .activityTable{border-spacing:6px 6px}
+  .activityTable th{display:none}
+  .activityTable,.activityTable tbody,.activityTable tr,.activityTable td{display:block;width:100%}
+  .activityTable tr{display:grid;gap:6px;margin-bottom:6px}
+  .activityTable .dateCell,.activityRow,.cellEmpty{min-height:unset}
+  .nightCellWrap{min-width:0}
+}
