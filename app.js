@@ -1,9 +1,7 @@
 (() => {
   const SHEET_NAME = "viaggio_new";
   const CSV_URL_CANDIDATES = [
-    // preferenza: foglio per nome (più robusto quando cambia gid)
     `https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?single=true&output=csv&sheet=${encodeURIComponent(SHEET_NAME)}`,
-    // fallback: vecchio link con gid (compatibilità)
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv"
   ];
   const GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/search";
@@ -34,7 +32,7 @@
   const state = {
     rows: [],
     filtered: [],
-    selectedBookingId: null,
+    selectedActivityId: null,
     tab: "dashboard",
     mapMode: "route",
     mapReady: false,
@@ -58,17 +56,12 @@
     kCost: document.getElementById("kCost"),
     metaCount: document.getElementById("metaCount"),
     healthBoard: document.getElementById("healthBoard"),
-    citySummary: document.getElementById("citySummary"),
     nextActivities: document.getElementById("nextActivities"),
-    timeline: document.getElementById("timeline"),
+    activitiesMeta: document.getElementById("activitiesMeta"),
+    activityDetail: document.getElementById("activityDetail"),
     mapMeta: document.getElementById("mapMeta"),
-    bookingsMeta: document.getElementById("bookingsMeta"),
-    bookingsList: document.getElementById("bookingsList"),
-    bookingDetail: document.getElementById("bookingDetail"),
     viewDashboard: document.getElementById("view-dashboard"),
-    viewTimeline: document.getElementById("view-timeline"),
     viewMap: document.getElementById("view-map"),
-    viewBookings: document.getElementById("view-bookings"),
     btnReload: document.getElementById("btnReload"),
     btnClearGeo: document.getElementById("btnClearGeo")
   };
@@ -84,17 +77,13 @@
   function parseDateFlexible(raw) {
     const value = norm(raw);
     if (!value) return "";
-
     const slash = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (slash) return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}`;
-
     const clean = keyify(value);
     const it = clean.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
     if (it && IT_MONTHS[it[2]]) return `${it[3]}-${String(IT_MONTHS[it[2]]).padStart(2, "0")}-${it[1].padStart(2, "0")}`;
-
     const fallback = new Date(value);
-    if (!Number.isNaN(fallback.getTime())) return fallback.toISOString().slice(0, 10);
-    return "";
+    return !Number.isNaN(fallback.getTime()) ? fallback.toISOString().slice(0, 10) : "";
   }
 
   function fmtIT(iso) {
@@ -132,17 +121,10 @@
       const c = text[i];
       const n = text[i + 1];
       if (c === '"') {
-        if (inQuotes && n === '"') {
-          cell += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
+        if (inQuotes && n === '"') { cell += '"'; i++; } else inQuotes = !inQuotes;
       } else if (!inQuotes && (c === "," || c === "\n" || c === "\r")) {
-        if (c === ",") {
-          row.push(cell);
-          cell = "";
-        } else {
+        if (c === ",") { row.push(cell); cell = ""; }
+        else {
           row.push(cell);
           if (row.some((x) => norm(x))) out.push(row);
           row = [];
@@ -175,6 +157,10 @@
     return i >= 0 ? norm(row[i]) : "";
   }
 
+  function bookingPlace(r) {
+    return norm(r.place) || norm(r.to) || norm(r.from) || "—";
+  }
+
   function normalizeRow(raw, idx, i) {
     const row = {
       id: `row-${i + 1}`,
@@ -199,6 +185,8 @@
     row._city = row.place || row.to || row.from || "";
     row._activity = low(row.activity);
     row._addressQuery = row.address || row.place || row.to || row.from || "";
+    row._kind = row._activity === "trip" ? "trip" : "night";
+    row._title = row._kind === "trip" ? `${norm(row.from) || "—"} → ${norm(row.to) || "—"}` : bookingPlace(row);
     return row;
   }
 
@@ -231,9 +219,9 @@
 
     state.rows = matrix.slice(1).map((r, i) => normalizeRow(r, idx, i)).filter((r) => r._dateISO);
     state.rows.sort((a, b) => a._dateISO.localeCompare(b._dateISO) || (a._activity === "trip" ? -1 : 1));
-
     rebuildFilterOptions();
     renderAll();
+
     const sourceLabel = sourceUrl.includes(`sheet=${encodeURIComponent(SHEET_NAME)}`)
       ? `Google Sheets (${SHEET_NAME})`
       : "Google Sheets (fallback gid)";
@@ -288,180 +276,138 @@
     state.filtered = applyFilters(state.rows);
     renderKPIs();
     renderDashboard();
-    renderTimeline();
-    renderBookings();
-    void renderMap();
+    if (state.tab === "map") void renderMap();
     els.metaCount.textContent = `${state.filtered.length} elementi filtrati`;
   }
 
   function renderKPIs() {
     const data = state.filtered;
-    const days = new Set(data.map((r) => r._dateISO)).size;
-    const trips = data.filter((r) => r._activity === "trip").length;
-    const nights = data.filter(isNightLike).length;
+    els.kDays.textContent = new Set(data.map((r) => r._dateISO)).size || "—";
+    els.kTrips.textContent = data.filter((r) => r._kind === "trip").length || "—";
+    els.kNights.textContent = data.filter(isNightLike).length || "—";
     const km = data.reduce((s, r) => s + r._km, 0);
     const cost = data.reduce((s, r) => s + r._cost, 0);
-    els.kDays.textContent = days || "—";
-    els.kTrips.textContent = trips || "—";
-    els.kNights.textContent = nights || "—";
     els.kKm.textContent = km ? km.toLocaleString("it-IT") : "—";
     els.kCost.textContent = cost ? cost.toLocaleString("it-IT") : "—";
   }
 
   function renderDashboard() {
     const data = state.filtered;
-    const trips = data.filter((r) => r._activity === "trip");
+    const trips = data.filter((r) => r._kind === "trip").sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+    const nights = data.filter(isNightLike).sort((a, b) => a._dateISO.localeCompare(b._dateISO));
+
     const longTrips = trips.filter((r) => r._km >= 500).length;
-    const missingAddresses = data.filter((r) => isNightLike(r) && !norm(r.address)).length;
-    const booked = data.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
+    const missingAddresses = nights.filter((r) => !norm(r.address)).length;
+    const booked = nights.filter((r) => ["prenotato", "confermato", "pagato"].includes(low(r.status))).length;
 
     els.healthBoard.innerHTML = `
       <div class="healthWrap">
         <article class="metric"><h4>Trip lunghi</h4><p>${longTrips}</p></article>
-        <article class="metric"><h4>Notti senza indirizzo</h4><p>${missingAddresses}</p></article>
+        <article class="metric"><h4>Pernotti senza indirizzo</h4><p>${missingAddresses}</p></article>
         <article class="metric"><h4>Prenotazioni confermate</h4><p>${booked}</p></article>
       </div>`;
 
-    const cityMap = new Map();
-    data.forEach((r) => {
-      const c = norm(r._city);
-      if (!c) return;
-      if (!cityMap.has(c)) cityMap.set(c, { trips: 0, nights: 0 });
-      const obj = cityMap.get(c);
-      if (r._activity === "trip") obj.trips += 1;
-      if (isNightLike(r)) obj.nights += 1;
-    });
-    const topCities = [...cityMap.entries()].sort((a, b) => (b[1].nights + b[1].trips) - (a[1].nights + a[1].trips)).slice(0, 8);
-    els.citySummary.innerHTML = topCities.length
-      ? `<div class="cityList">${topCities.map(([city, s]) => `<div class="cityRow"><strong>${esc(city)}</strong><span class="muted">${s.nights} notti · ${s.trips} trip</span></div>`).join("")}</div>`
-      : `<div class="emptyState">Nessuna città disponibile</div>`;
-
-    const upcoming = [...data].sort((a, b) => a._dateISO.localeCompare(b._dateISO)).slice(0, 10);
-    els.nextActivities.innerHTML = upcoming.length
-      ? `<div class="activityList">${upcoming.map((r) => `
-        <article class="activityItem">
-          <div class="top"><span>${esc(fmtIT(r._dateISO))}</span><span>${esc(r.activity || "—")}</span></div>
-          <strong>${esc(r._activity === "trip" ? `${norm(r.from) || "—"} → ${norm(r.to) || "—"}` : (norm(r.place) || norm(r.to) || "Pernotto"))}</strong>
-          <span class="muted">${esc(norm(r.lodging) || norm(r.address) || norm(r.notes) || "")}</span>
-          ${linkHtml(r.mapsLink, "Google maps") ? `<span class="muted">🗺️ ${linkHtml(r.mapsLink, "Google maps")}</span>` : ""}
-        </article>`).join("")}</div>`
-      : `<div class="emptyState">Nessuna attività disponibile</div>`;
-  }
-
-  function renderTimeline() {
-    const byDay = new Map();
-    state.filtered.forEach((r) => {
-      if (!byDay.has(r._dateISO)) byDay.set(r._dateISO, []);
-      byDay.get(r._dateISO).push(r);
-    });
-    const days = [...byDay.keys()].sort();
-    if (!days.length) {
-      els.timeline.innerHTML = `<div class="emptyState">Nessun dato in timeline con i filtri correnti.</div>`;
-      return;
+    const allActivities = [...trips, ...nights];
+    if (!state.selectedActivityId || !allActivities.some((a) => a.id === state.selectedActivityId)) {
+      state.selectedActivityId = allActivities[0]?.id || null;
     }
 
-    els.timeline.innerHTML = days.map((d) => {
-      const items = byDay.get(d);
-      const km = items.reduce((s, r) => s + r._km, 0);
-      const cost = items.reduce((s, r) => s + r._cost, 0);
-      return `
-      <article class="timelineDay">
-        <header class="timelineHead"><span>${esc(fmtIT(d))}</span><span>${km ? `${km.toLocaleString("it-IT")} km` : ""}${km && cost ? " · " : ""}${cost ? cost.toLocaleString("it-IT") : ""}</span></header>
-        <div class="timelineBody">
-          ${items.map((r) => `
-            <div class="timelineCard ${r._activity === "trip" ? "trip" : "night"}">
-              <div class="route">${esc(r._activity === "trip" ? `${norm(r.from) || "—"} → ${norm(r.to) || "—"}` : (norm(r.place) || norm(r.to) || "Pernottamento"))}</div>
-              <div class="badges">
-                <span class="badge">${esc(r.activity || "—")}</span>
-                ${r._km ? `<span class="badge">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}
-                ${norm(r.status) ? `<span class="badge">${esc(norm(r.status))}</span>` : ""}
-                ${norm(r.lodging) ? `<span class="badge">🏨 ${esc(norm(r.lodging))}</span>` : ""}
-                ${norm(r.address) ? `<span class="badge">📍 ${esc(norm(r.address))}</span>` : ""}
-                ${linkHtml(r.link, "link") ? `<span class="badge">🔗 ${linkHtml(r.link, "link")}</span>` : ""}
-              </div>
-            </div>`).join("")}
-        </div>
+    els.activitiesMeta.textContent = `${trips.length} trip · ${nights.length} pernottamenti`;
+
+    const byDate = new Map();
+    for (const r of allActivities) {
+      if (!byDate.has(r._dateISO)) byDate.set(r._dateISO, { trips: [], nights: [] });
+      const bucket = byDate.get(r._dateISO);
+      if (r._kind === "trip") bucket.trips.push(r);
+      else bucket.nights.push(r);
+    }
+
+    const dates = [...byDate.keys()].sort();
+
+    const renderTripCell = (r) => `
+      <article class="activityRow ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
+        <div class="top"><span>Trip</span><span>${esc(fmtIT(r._dateISO))}</span></div>
+        <div class="route">${esc(`${norm(r.from) || "—"} → ${norm(r.to) || "—"}`)}</div>
+        <div class="inlineMeta">${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}${r._cost ? `<span class="pill">${esc(r._cost.toLocaleString("it-IT"))}</span>` : ""}</div>
       </article>`;
+
+    const renderNightCell = (r) => `
+      <article class="activityRow ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
+        <div class="top"><span>Pernottamento</span><span>${esc(fmtIT(r._dateISO))}</span></div>
+        <div class="route">${esc(bookingPlace(r))}</div>
+        <div class="inlineMeta">${norm(r.lodging) ? `<span class="pill">🏨 ${esc(norm(r.lodging))}</span>` : ""}${norm(r.status) ? `<span class="pill">${esc(norm(r.status))}</span>` : ""}</div>
+      </article>`;
+
+    const rows = dates.map((date) => {
+      const day = byDate.get(date);
+      const tripCell = day.trips[0] ? renderTripCell(day.trips[0]) : '<div class="cellEmpty">—</div>';
+      const nightCell = day.nights[0] ? renderNightCell(day.nights[0]) : '<div class="cellEmpty">—</div>';
+      return `
+        <div class="calendarRow">
+          <div class="dateCell">${esc(fmtIT(date))}</div>
+          <div>${tripCell}</div>
+          <div>${nightCell}</div>
+        </div>`;
     }).join("");
-  }
 
-  function bookingPlace(r) {
-    return norm(r.place) || norm(r.to) || norm(r.from) || "—";
-  }
+    els.nextActivities.innerHTML = dates.length
+      ? `
+      <div class="activityBoard">
+        <div class="calendarHead"><div>Data</div><div>Trip</div><div>Pernottamento</div></div>
+        ${rows}
+      </div>`
+      : '<div class="emptyState">Nessuna attività disponibile</div>';
 
-  function renderBookings() {
-    const bookings = state.filtered.filter(isNightLike).sort((a, b) => a._dateISO.localeCompare(b._dateISO));
-    els.bookingsMeta.textContent = `${bookings.length} elementi`;
-
-    if (!bookings.length) {
-      els.bookingsList.innerHTML = `<div class="emptyState">Nessuna prenotazione nei filtri correnti.</div>`;
-      els.bookingDetail.innerHTML = `<div class="emptyState">Seleziona una prenotazione per i dettagli.</div>`;
-      state.selectedBookingId = null;
-      return;
-    }
-
-    if (!state.selectedBookingId || !bookings.some((b) => b.id === state.selectedBookingId)) {
-      state.selectedBookingId = bookings[0].id;
-    }
-
-    els.bookingsList.innerHTML = bookings.map((b) => `
-      <article class="bookingCard ${b.id === state.selectedBookingId ? "active" : ""}" data-booking-id="${esc(b.id)}">
-        <div class="top">
-          <span class="title">${esc(norm(b.lodging) || bookingPlace(b))}</span>
-          <span class="date">${esc(fmtIT(b._dateISO))}</span>
-        </div>
-        <div class="inlineMeta">
-          <span class="pill">📍 ${esc(bookingPlace(b))}</span>
-          ${norm(b.status) ? `<span class="pill">${esc(norm(b.status))}</span>` : ""}
-          ${b._cost ? `<span class="pill">${esc(b._cost.toLocaleString("it-IT"))}</span>` : ""}
-          ${linkHtml(b.mapsLink, "maps") ? `<span class="pill">🗺️ ${linkHtml(b.mapsLink, "maps")}</span>` : ""}
-        </div>
-      </article>
-    `).join("");
-
-    els.bookingsList.querySelectorAll("[data-booking-id]").forEach((node) => {
+    els.nextActivities.querySelectorAll("[data-activity-id]").forEach((node) => {
       node.addEventListener("click", () => {
-        state.selectedBookingId = node.getAttribute("data-booking-id");
-        renderBookings();
+        state.selectedActivityId = node.getAttribute("data-activity-id");
+        renderDashboard();
       });
     });
 
-    const selected = bookings.find((b) => b.id === state.selectedBookingId) || bookings[0];
-    els.bookingDetail.innerHTML = `
-      <h3>${esc(norm(selected.lodging) || bookingPlace(selected))}</h3>
+    const selected = allActivities.find((a) => a.id === state.selectedActivityId);
+    renderActivityDetail(selected);
+  }
+
+  function renderActivityDetail(row) {
+    if (!row) {
+      els.activityDetail.innerHTML = '<div class="emptyState">Seleziona una riga (Trip o Pernottamento) per vedere i dettagli.</div>';
+      return;
+    }
+
+    const mapsUrl = normalizeHttpUrl(row.mapsLink) || (norm(row.address) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(norm(row.address))}` : "");
+
+    els.activityDetail.innerHTML = `
+      <h3>${esc(norm(row.lodging) || row._title)}</h3>
       <div class="detailGrid">
-        <div class="k">Data</div><div>${esc(fmtIT(selected._dateISO))}</div>
-        <div class="k">Luogo</div><div>${esc(bookingPlace(selected))}</div>
-        <div class="k">Indirizzo</div><div>${esc(norm(selected.address) || "—")}</div>
-        <div class="k">Stato</div><div>${esc(norm(selected.status) || "—")}</div>
-        <div class="k">Costo</div><div>${selected._cost ? esc(selected._cost.toLocaleString("it-IT")) : "—"}</div>
-        <div class="k">Cancellazione</div><div>${esc(norm(selected.cancel) || "—")}</div>
-        <div class="k">Google Maps</div><div>${linkHtml(selected.mapsLink, "apri mappa") || "—"}</div>
-        <div class="k">Link conferma</div><div>${linkHtml(selected.link, "apri prenotazione") || "—"}</div>
-        <div class="k">Note</div><div>${esc(norm(selected.notes) || "—")}</div>
+        <div class="k">Data</div><div>${esc(fmtIT(row._dateISO))}</div>
+        <div class="k">Tipo</div><div>${esc(row.activity || "—")}</div>
+        <div class="k">Percorso / Luogo</div><div>${esc(row._title)}</div>
+        <div class="k">Hotel</div><div>${esc(norm(row.lodging) || "—")}</div>
+        <div class="k">Indirizzo</div><div>${esc(norm(row.address) || "—")}</div>
+        <div class="k">Stato</div><div>${esc(norm(row.status) || "—")}</div>
+        <div class="k">Km</div><div>${row._km ? esc(row._km.toLocaleString("it-IT")) : "—"}</div>
+        <div class="k">Costo</div><div>${row._cost ? esc(row._cost.toLocaleString("it-IT")) : "—"}</div>
+        <div class="k">Cancellazione</div><div>${esc(norm(row.cancel) || "—")}</div>
+        <div class="k">Link conferma</div><div>${linkHtml(row.link, "Apri link conferma") || "—"}</div>
+        <div class="k">Google Maps</div><div>${mapsUrl ? `<a class="link" href="${esc(mapsUrl)}" target="_blank" rel="noopener">Apri in Google Maps</a>` : "—"}</div>
+        <div class="k">Note</div><div>${esc(norm(row.notes) || "—")}</div>
       </div>
       <div class="actions">
-        <button class="actionBtn" id="btnFocusBooking">Apri in mappa</button>
+        <button class="actionBtn" id="btnFocusActivityMap">Mostra su mappa</button>
       </div>
     `;
 
-    document.getElementById("btnFocusBooking")?.addEventListener("click", () => void focusBookingOnMap(selected));
+    document.getElementById("btnFocusActivityMap")?.addEventListener("click", () => void focusActivityOnMap(row));
   }
 
   function loadCache() {
-    try {
-      return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); }
+    catch { return {}; }
   }
 
   function saveCache(cache) {
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-    } catch {
-      // ignore
-    }
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch {}
   }
 
   function sleep(ms) {
@@ -495,7 +441,6 @@
     if (state.mapReady) return;
     state.map = L.map("map", { scrollWheelZoom: true }).setView([41.9, 12.5], 5);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(state.map);
-
     state.routeLayer = L.layerGroup().addTo(state.map);
     state.nightLayer = L.layerGroup().addTo(state.map);
     state.focusLayer = L.layerGroup().addTo(state.map);
@@ -537,7 +482,7 @@
       layers.push(mk);
     }
 
-    data.filter((r) => r._activity === "trip").forEach((r) => {
+    data.filter((r) => r._kind === "trip").forEach((r) => {
       const a = geo.get(norm(r.from));
       const b = geo.get(norm(r.to));
       if (!a || !b) return;
@@ -560,9 +505,8 @@
       if (!query) continue;
       const hit = await geocodeWithCache(query);
       if (!hit) continue;
-
       count += 1;
-      const popup = `<strong>${esc(norm(r.lodging) || bookingPlace(r))}</strong><br>${esc(query)}${norm(r.status) ? `<br>📌 ${esc(norm(r.status))}` : ""}${linkHtml(r.mapsLink, "Google Maps") ? `<br>🗺️ ${linkHtml(r.mapsLink, "Google Maps")}` : ""}${linkHtml(r.link, "Conferma") ? `<br>🔗 ${linkHtml(r.link, "Conferma")}` : ""}`;
+      const popup = `<strong>${esc(norm(r.lodging) || bookingPlace(r))}</strong><br>${esc(query)}${norm(r.status) ? `<br>📌 ${esc(norm(r.status))}` : ""}${linkHtml(r.mapsLink, "Apri in Google Maps") ? `<br>🗺️ ${linkHtml(r.mapsLink, "Apri in Google Maps")}` : ""}`;
       const mk = L.marker([hit.lat, hit.lng]).bindPopup(popup);
       mk.addTo(state.nightLayer);
       layers.push(mk);
@@ -573,38 +517,34 @@
   }
 
   async function renderMap() {
-    if (els.viewMap.classList.contains("hidden") && !state.mapReady) return;
+    if (state.tab !== "map" && !state.mapReady) return;
     initMap();
     clearMapLayers();
     if (state.mapMode === "route") await renderRouteMap(state.filtered);
     else await renderNightMap(state.filtered);
   }
 
-  async function focusBookingOnMap(booking) {
+  async function focusActivityOnMap(row) {
     setTab("map");
-    setMapMode("night");
-
-    const query = norm(booking.address) || bookingPlace(booking);
+    setMapMode(isNightLike(row) ? "night" : "route");
+    const query = norm(row.address) || bookingPlace(row);
     const hit = await geocodeWithCache(query);
     if (!hit) {
-      els.mapMeta.textContent = "Impossibile geocodificare questa prenotazione";
+      els.mapMeta.textContent = "Impossibile geocodificare questa attività";
       return;
     }
-
     state.focusLayer.clearLayers();
-    const mk = L.marker([hit.lat, hit.lng]).bindPopup(`<strong>${esc(norm(booking.lodging) || bookingPlace(booking))}</strong><br>${esc(query)}`);
+    const mk = L.marker([hit.lat, hit.lng]).bindPopup(`<strong>${esc(norm(row.lodging) || row._title)}</strong><br>${esc(query)}`);
     mk.addTo(state.focusLayer).openPopup();
     state.map.setView([hit.lat, hit.lng], 12);
-    els.mapMeta.textContent = `Focus su ${bookingPlace(booking)}`;
+    els.mapMeta.textContent = `Focus su ${row._title}`;
   }
 
   function setTab(tab) {
     state.tab = tab;
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     els.viewDashboard.classList.toggle("hidden", tab !== "dashboard");
-    els.viewTimeline.classList.toggle("hidden", tab !== "timeline");
     els.viewMap.classList.toggle("hidden", tab !== "map");
-    els.viewBookings.classList.toggle("hidden", tab !== "bookings");
 
     if (tab === "map") {
       initMap();
@@ -618,7 +558,7 @@
   function setMapMode(mode) {
     state.mapMode = mode;
     document.querySelectorAll(".modeBtn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
-    void renderMap();
+    if (state.tab === "map") void renderMap();
   }
 
   function debounce(fn, ms = 180) {
@@ -648,7 +588,7 @@
     els.btnClearGeo.addEventListener("click", () => {
       localStorage.removeItem(CACHE_KEY);
       alert("Cache geocoding pulita");
-      void renderMap();
+      if (state.tab === "map") void renderMap();
     });
   }
 
