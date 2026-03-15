@@ -1,5 +1,11 @@
 (() => {
-  const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv";
+  const SHEET_NAME = "viaggio_new";
+  const CSV_URL_CANDIDATES = [
+    // preferenza: foglio per nome (più robusto quando cambia gid)
+    `https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?single=true&output=csv&sheet=${encodeURIComponent(SHEET_NAME)}`,
+    // fallback: vecchio link con gid (compatibilità)
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv"
+  ];
   const GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/search";
   const CACHE_KEY = "trip_geocode_cache_v4";
 
@@ -200,12 +206,25 @@
     return r._activity === "notte" || !!(norm(r.lodging) || norm(r.address) || normalizeHttpUrl(r.link) || normalizeHttpUrl(r.mapsLink) || norm(r.status));
   }
 
+  async function fetchFirstAvailableCsv() {
+    let lastErr = null;
+    for (const baseUrl of CSV_URL_CANDIDATES) {
+      try {
+        const res = await fetch(`${baseUrl}&t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const matrix = parseCSV(await res.text());
+        if (!matrix.length) throw new Error("CSV vuoto");
+        return { matrix, sourceUrl: baseUrl };
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw new Error(`Errore nel caricamento CSV (tentativi falliti: ${CSV_URL_CANDIDATES.length})${lastErr ? ` · ${lastErr.message}` : ""}`);
+  }
+
   async function loadData() {
     els.sourceMeta.textContent = "Carico dati...";
-    const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Errore nel caricamento CSV");
-    const matrix = parseCSV(await res.text());
-    if (!matrix.length) throw new Error("CSV vuoto");
+    const { matrix, sourceUrl } = await fetchFirstAvailableCsv();
 
     const idx = buildHeaderIndex(matrix[0]);
     if (idx.date < 0) throw new Error("Colonna data non trovata");
@@ -215,7 +234,10 @@
 
     rebuildFilterOptions();
     renderAll();
-    els.sourceMeta.textContent = `Fonte dati: Google Sheets · ${state.rows.length} righe valide`;
+    const sourceLabel = sourceUrl.includes(`sheet=${encodeURIComponent(SHEET_NAME)}`)
+      ? `Google Sheets (${SHEET_NAME})`
+      : "Google Sheets (fallback gid)";
+    els.sourceMeta.textContent = `Fonte dati: ${sourceLabel} · ${state.rows.length} righe valide`;
   }
 
   function getFilters() {
