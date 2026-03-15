@@ -307,9 +307,8 @@
         <article class="metric"><h4>Prenotazioni confermate</h4><p>${booked}</p></article>
       </div>`;
 
-    const allActivities = [...trips, ...nights];
-    if (!state.selectedActivityId || !allActivities.some((a) => a.id === state.selectedActivityId)) {
-      state.selectedActivityId = allActivities[0]?.id || null;
+    if (!state.selectedActivityId || !nights.some((a) => a.id === state.selectedActivityId)) {
+      state.selectedActivityId = nights[0]?.id || null;
     }
 
     els.activitiesMeta.textContent = `${trips.length} trip · ${nights.length} pernottamenti`;
@@ -325,14 +324,14 @@
     const dates = [...byDate.keys()].sort();
 
     const renderTripCell = (r) => `
-      <article class="activityRow ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
+      <article class="activityRow tripRow">
         <div class="top"><span>Trip</span><span>${esc(fmtIT(r._dateISO))}</span></div>
         <div class="route">${esc(`${norm(r.from) || "—"} → ${norm(r.to) || "—"}`)}</div>
-        <div class="inlineMeta">${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}${r._cost ? `<span class="pill">${esc(r._cost.toLocaleString("it-IT"))}</span>` : ""}</div>
+        <div class="inlineMeta">${r._km ? `<span class="pill">${esc(r._km.toLocaleString("it-IT"))} km</span>` : ""}</div>
       </article>`;
 
     const renderNightCell = (r) => `
-      <article class="activityRow ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
+      <article class="activityRow clickable ${r.id === state.selectedActivityId ? "active" : ""}" data-activity-id="${esc(r.id)}">
         <div class="top"><span>Pernottamento</span><span>${esc(fmtIT(r._dateISO))}</span></div>
         <div class="route">${esc(bookingPlace(r))}</div>
         <div class="inlineMeta">${norm(r.lodging) ? `<span class="pill">🏨 ${esc(norm(r.lodging))}</span>` : ""}${norm(r.status) ? `<span class="pill">${esc(norm(r.status))}</span>` : ""}</div>
@@ -358,14 +357,14 @@
       </div>`
       : '<div class="emptyState">Nessuna attività disponibile</div>';
 
-    els.nextActivities.querySelectorAll("[data-activity-id]").forEach((node) => {
+    els.nextActivities.querySelectorAll(".activityRow.clickable[data-activity-id]").forEach((node) => {
       node.addEventListener("click", () => {
         state.selectedActivityId = node.getAttribute("data-activity-id");
         renderDashboard();
       });
     });
 
-    const selected = allActivities.find((a) => a.id === state.selectedActivityId);
+    const selected = nights.find((a) => a.id === state.selectedActivityId);
     renderActivityDetail(selected);
   }
 
