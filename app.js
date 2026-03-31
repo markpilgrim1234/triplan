@@ -2,8 +2,10 @@
   const SHEET_NAME = "viaggio_new";
   const CSV_URL_CANDIDATES = [
     `https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?single=true&output=csv&sheet=${encodeURIComponent(SHEET_NAME)}`,
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv"
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?gid=158652418&single=true&output=csv",
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-J-fU0zQ5bftX3r1UV3x_CB82dU4RGOiUKd4jEvAuI8USWaXzA1nJK2XIUrbc9w/pub?output=csv&gid=158652418"
   ];
+  const LOCAL_CSV_FALLBACK = "./data.csv";
   const GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/search";
   const CACHE_KEY = "trip_geocode_cache_v4";
 
@@ -201,19 +203,32 @@
   }
 
   async function fetchFirstAvailableCsv() {
-    let lastErr = null;
+    const errors = [];
     for (const baseUrl of CSV_URL_CANDIDATES) {
       try {
-        const res = await fetch(`${baseUrl}&t=${Date.now()}`, { cache: "no-store" });
+        const url = new URL(baseUrl);
+        url.searchParams.set("t", String(Date.now()));
+        const res = await fetch(url.toString(), { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const matrix = parseCSV(await res.text());
         if (!matrix.length) throw new Error("CSV vuoto");
         return { matrix, sourceUrl: baseUrl };
       } catch (err) {
-        lastErr = err;
+        errors.push(`${baseUrl} → ${err?.message || String(err)}`);
       }
     }
-    throw new Error(`Errore nel caricamento CSV (tentativi falliti: ${CSV_URL_CANDIDATES.length})${lastErr ? ` · ${lastErr.message}` : ""}`);
+
+    try {
+      const res = await fetch(`${LOCAL_CSV_FALLBACK}?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const matrix = parseCSV(await res.text());
+      if (!matrix.length) throw new Error("CSV locale vuoto");
+      return { matrix, sourceUrl: LOCAL_CSV_FALLBACK };
+    } catch (err) {
+      errors.push(`${LOCAL_CSV_FALLBACK} → ${err?.message || String(err)}`);
+    }
+
+    throw new Error(`Errore nel caricamento CSV (tentativi falliti: ${errors.length}) · ${errors.join(" | ")}`);
   }
 
   async function loadData() {
@@ -228,9 +243,11 @@
     rebuildFilterOptions();
     renderAll();
 
-    const sourceLabel = sourceUrl.includes(`sheet=${encodeURIComponent(SHEET_NAME)}`)
-      ? `Google Sheets (${SHEET_NAME})`
-      : "Google Sheets (fallback gid)";
+    const sourceLabel = sourceUrl === LOCAL_CSV_FALLBACK
+      ? "File locale (data.csv)"
+      : sourceUrl.includes(`sheet=${encodeURIComponent(SHEET_NAME)}`)
+        ? `Google Sheets (${SHEET_NAME})`
+        : "Google Sheets (fallback gid)";
     els.sourceMeta.textContent = `Fonte dati: ${sourceLabel} · ${state.rows.length} righe valide`;
   }
 
